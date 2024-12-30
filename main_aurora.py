@@ -259,7 +259,7 @@ def main(config: DictConfig) -> None:
 	csv_logger = CSVLogger("./log.csv", header=list(metrics.keys()))
 
 	# Main loop
-	logging.info("Starting main loop...")
+	logging.info("Starting main loop (modified)...")
 
 	def aurora_scan(carry, unused):
 		repertoire, train_state, key = carry
