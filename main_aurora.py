@@ -3,7 +3,7 @@ import time
 import pickle
 from functools import partial
 import logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) 
 
 import jax
 import jax.numpy as jnp
