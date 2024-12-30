@@ -84,15 +84,15 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
 
-	# def local_density_variation(observation):
-	# 	# Get phenotype at last timestep
-	# 	final_pattern = observation.phenotype[-1]
-	# 	# Calculate gradients in x and y directions
-	# 	gradients = jnp.gradient(final_pattern)
-	# 	# Compute magnitude of gradients
-	# 	gradient_magnitude = jnp.sqrt(gradients[0]**2 + gradients[1]**2)
-	# 	# Return mean gradient magnitude
-	# 	return jnp.mean(gradient_magnitude)
+	def local_density_variation(observation):
+		# Get phenotype at last timestep
+		final_pattern = observation.phenotype[-1]
+		# Calculate gradients in x and y directions
+		gradients = jnp.gradient(final_pattern)
+		# Compute magnitude of gradients
+		gradient_magnitude = jnp.sqrt(gradients[0]**2 + gradients[1]**2)
+		# Return mean gradient magnitude
+		return jnp.mean(gradient_magnitude)
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
@@ -103,8 +103,8 @@ def main(config: DictConfig) -> None:
 			fitness = jnp.squeeze(fitness)
 
 		# Add gradient complexity term with small weight
-		# gradient_score = local_density_variation(observation)
-		# fitness += 0.2 * gradient_score
+		gradient_score = local_density_variation(observation)
+		fitness += 0.2 * gradient_score
 
 		if config.qd.secondary_fitness:
 			secondary_fitness = get_metric(observation, config.qd.secondary_fitness, config.qd.n_keep)
