@@ -104,7 +104,7 @@ def main(config: DictConfig) -> None:
 
 		# Add gradient complexity term with small weight
 		gradient_score = local_density_variation(observation)
-		fitness += 0.1 * gradient_score
+		fitness += 0.2 * gradient_score
 
 		if config.qd.secondary_fitness:
 			secondary_fitness = get_metric(observation, config.qd.secondary_fitness, config.qd.n_keep)
