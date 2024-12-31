@@ -102,8 +102,9 @@ def main(config: DictConfig) -> None:
 			assert fitness.size == 1
 			fitness = jnp.squeeze(fitness)
 
-		# Add gradient complexity term with small weight
+		# Add gradient complexity term with 20% weight
 		gradient_score = local_density_variation(observation)
+		fitness = fitness * 0.8
 		fitness += 0.2 * gradient_score
 
 		if config.qd.secondary_fitness:
