@@ -79,33 +79,27 @@ def main(config: DictConfig) -> None:
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
 		return jnp.mean(latents, axis=-2)
 
-	def latent_variance(observation, train_state, key, repertoire=None):
+	def latent_variance(observation, train_state, key):
 		# Get latent representations
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
 		latent_mean = jnp.mean(latents, axis=-2)
 		
-		# Original stability component
+		# Calculate stability (original metric)
 		stability = -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
 		
-		# If no repertoire yet, return just stability
-		if repertoire is None:
-			return stability
-			
-		# Get latent means of current population
-		pop_observations = repertoire.observations
-		pop_latents = vae.apply(train_state.params, pop_observations.phenotype, key, method=vae.encode)
-		pop_means = jnp.mean(pop_latents, axis=-2)
+		# Get batch of existing latents from repertoire if available
+		if hasattr(observation, 'archive_latents'):
+			archive_latents = observation.archive_latents
+			# Calculate novelty as minimum distance to archive
+			distances = jnp.linalg.norm(latent_mean - archive_latents, axis=-1)
+			novelty = jnp.min(distances + 1e6 * (distances == 0))
+			return stability + config.qd.novelty_weight * novelty
 		
-		# Calculate novelty as minimum distance to existing population
-		distances = jnp.linalg.norm(latent_mean - pop_means[:, None, :], axis=-1)
-		novelty = jnp.min(distances + 1e6 * (distances == 0), axis=0)  # Add large value to self-distances
-		
-		# Combine stability and novelty
-		return stability + config.qd.novelty_weight * novelty
+		return stability
 
-	def fitness_fn(observation, train_state, key, repertoire=None):
+	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
-			fitness = latent_variance(observation, train_state, key, repertoire)
+			fitness = latent_variance(observation, train_state, key)
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
@@ -136,23 +130,15 @@ def main(config: DictConfig) -> None:
 		accum = jax.tree.map(lambda x: x[-config.qd.n_keep_ae:], accum)
 		return fitness, descriptor, accum
 
-	def scoring_fn(genotypes, train_state, key):  # Keep original signature
+	def scoring_fn(genotypes, train_state, key):
 		batch_size = jax.tree.leaves(genotypes)[0].shape[0]
 		key, *keys = jax.random.split(key, batch_size+1)
-		
-		# Since we don't have repertoire in init, create dummy/empty one for novelty calculation
-		dummy_repertoire = None  # During init phase, we'll just use stability
-		
-		# Vectorized evaluation
-		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(
-			genotypes, train_state, jnp.array(keys)
-		)
-		
-		# Handle NaN values
+		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(genotypes, train_state, jnp.array(keys))
+
 		fitnesses_nan = jnp.isnan(fitnesses)
 		descriptors_nan = jnp.any(jnp.isnan(descriptors), axis=-1)
 		fitnesses = jnp.where(fitnesses_nan | descriptors_nan, -jnp.inf, fitnesses)
-		
+
 		return fitnesses, descriptors, {"observations": observations}, key
 
 	# Define a metrics function
@@ -277,33 +263,12 @@ def main(config: DictConfig) -> None:
 	def aurora_scan(carry, unused):
 		repertoire, train_state, key = carry
 
-		def make_scoring_fn_with_repertoire(repertoire):
-			def scoring_fn_with_repertoire(genotypes, train_state, key):
-				batch_size = jax.tree.leaves(genotypes)[0].shape[0]
-				key, *keys = jax.random.split(key, batch_size+1)
-				
-				# Now we have access to repertoire through closure
-				fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, None, 0))(
-					genotypes, train_state, repertoire, jnp.array(keys)
-				)
-				
-				# Handle NaN values
-				fitnesses_nan = jnp.isnan(fitnesses)
-				descriptors_nan = jnp.any(jnp.isnan(descriptors), axis=-1)
-				fitnesses = jnp.where(fitnesses_nan | descriptors_nan, -jnp.inf, fitnesses)
-				
-				return fitnesses, descriptors, {"observations": observations}, key
-			
-			return scoring_fn_with_repertoire
-
 		# AURORA update
-		scoring_fn_update = make_scoring_fn_with_repertoire(repertoire)
 		repertoire, _, metrics, key = aurora.update(
 			repertoire,
 			None,
 			key,
 			train_state,
-			scoring_fn=scoring_fn_update
 		)
 
 		# AE training
