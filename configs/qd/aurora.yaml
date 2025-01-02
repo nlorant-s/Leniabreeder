@@ -1,5 +1,7 @@
 algo: aurora
 
+novelty_weight: 0.5  # Balance between stability and novelty
+
 # General
 n_generations: 50
 log_interval: 10

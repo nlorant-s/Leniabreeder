@@ -79,14 +79,33 @@ def main(config: DictConfig) -> None:
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
 		return jnp.mean(latents, axis=-2)
 
-	def latent_variance(observation, train_state, key):
+	def latent_variance(observation, train_state, key, repertoire=None):
+		# Get latent representations
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
 		latent_mean = jnp.mean(latents, axis=-2)
-		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
+		
+		# Original stability component
+		stability = -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
+		
+		# If no repertoire yet, return just stability
+		if repertoire is None:
+			return stability
+			
+		# Get latent means of current population
+		pop_observations = repertoire.observations
+		pop_latents = vae.apply(train_state.params, pop_observations.phenotype, key, method=vae.encode)
+		pop_means = jnp.mean(pop_latents, axis=-2)
+		
+		# Calculate novelty as minimum distance to existing population
+		distances = jnp.linalg.norm(latent_mean - pop_means[:, None, :], axis=-1)
+		novelty = jnp.min(distances + 1e6 * (distances == 0), axis=0)  # Add large value to self-distances
+		
+		# Combine stability and novelty
+		return stability + config.qd.novelty_weight * novelty
 
-	def fitness_fn(observation, train_state, key):
+	def fitness_fn(observation, train_state, key, repertoire=None):
 		if config.qd.fitness == "unsupervised":
-			fitness = latent_variance(observation, train_state, key)
+			fitness = latent_variance(observation, train_state, key, repertoire)
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
@@ -117,15 +136,19 @@ def main(config: DictConfig) -> None:
 		accum = jax.tree.map(lambda x: x[-config.qd.n_keep_ae:], accum)
 		return fitness, descriptor, accum
 
-	def scoring_fn(genotypes, train_state, key):
+	def scoring_fn(genotypes, train_state, repertoire, key):
 		batch_size = jax.tree.leaves(genotypes)[0].shape[0]
 		key, *keys = jax.random.split(key, batch_size+1)
-		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(genotypes, train_state, jnp.array(keys))
-
+		
+		# Vectorized evaluation with repertoire
+		evaluate_batch = lambda g, k: evaluate(g, train_state, repertoire, k)
+		fitnesses, descriptors, observations = jax.vmap(evaluate_batch, in_axes=(0, 0))(genotypes, jnp.array(keys))
+		
+		# Existing validation code
 		fitnesses_nan = jnp.isnan(fitnesses)
 		descriptors_nan = jnp.any(jnp.isnan(descriptors), axis=-1)
 		fitnesses = jnp.where(fitnesses_nan | descriptors_nan, -jnp.inf, fitnesses)
-
+		
 		return fitnesses, descriptors, {"observations": observations}, key
 
 	# Define a metrics function
@@ -256,6 +279,7 @@ def main(config: DictConfig) -> None:
 			None,
 			key,
 			train_state,
+			repertoire
 		)
 
 		# AE training
