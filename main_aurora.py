@@ -136,15 +136,19 @@ def main(config: DictConfig) -> None:
 		accum = jax.tree.map(lambda x: x[-config.qd.n_keep_ae:], accum)
 		return fitness, descriptor, accum
 
-	def scoring_fn(genotypes, train_state, repertoire, key):
+	def scoring_fn(genotypes, train_state, key):  # Keep original signature
 		batch_size = jax.tree.leaves(genotypes)[0].shape[0]
 		key, *keys = jax.random.split(key, batch_size+1)
 		
-		# Vectorized evaluation with repertoire
-		evaluate_batch = lambda g, k: evaluate(g, train_state, repertoire, k)
-		fitnesses, descriptors, observations = jax.vmap(evaluate_batch, in_axes=(0, 0))(genotypes, jnp.array(keys))
+		# Since we don't have repertoire in init, create dummy/empty one for novelty calculation
+		dummy_repertoire = None  # During init phase, we'll just use stability
 		
-		# Existing validation code
+		# Vectorized evaluation
+		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(
+			genotypes, train_state, jnp.array(keys)
+		)
+		
+		# Handle NaN values
 		fitnesses_nan = jnp.isnan(fitnesses)
 		descriptors_nan = jnp.any(jnp.isnan(descriptors), axis=-1)
 		fitnesses = jnp.where(fitnesses_nan | descriptors_nan, -jnp.inf, fitnesses)
@@ -273,13 +277,33 @@ def main(config: DictConfig) -> None:
 	def aurora_scan(carry, unused):
 		repertoire, train_state, key = carry
 
+		def make_scoring_fn_with_repertoire(repertoire):
+			def scoring_fn_with_repertoire(genotypes, train_state, key):
+				batch_size = jax.tree.leaves(genotypes)[0].shape[0]
+				key, *keys = jax.random.split(key, batch_size+1)
+				
+				# Now we have access to repertoire through closure
+				fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, None, 0))(
+					genotypes, train_state, repertoire, jnp.array(keys)
+				)
+				
+				# Handle NaN values
+				fitnesses_nan = jnp.isnan(fitnesses)
+				descriptors_nan = jnp.any(jnp.isnan(descriptors), axis=-1)
+				fitnesses = jnp.where(fitnesses_nan | descriptors_nan, -jnp.inf, fitnesses)
+				
+				return fitnesses, descriptors, {"observations": observations}, key
+			
+			return scoring_fn_with_repertoire
+
 		# AURORA update
+		scoring_fn_update = make_scoring_fn_with_repertoire(repertoire)
 		repertoire, _, metrics, key = aurora.update(
 			repertoire,
 			None,
 			key,
 			train_state,
-			repertoire
+			scoring_fn=scoring_fn_update
 		)
 
 		# AE training
