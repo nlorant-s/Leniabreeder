@@ -172,9 +172,16 @@ def visualize_aurora(run_dir):
 
 
 if __name__ == "__main__":
-	run_dirs = [
-		"/workspace/src/output/aurora/unsupervised/2024-06-12_230539_507409",
-	]
-
-	for run_dir in run_dirs:
-		visualize_aurora(Path(run_dir))
+    import sys
+    
+    if len(sys.argv) > 1:
+        # If path provided as argument, use that
+        run_dir = sys.argv[1]
+        visualize_aurora(Path(run_dir))
+    else:
+        # Otherwise use default paths
+        run_dirs = [
+            "C:/Users/loran/Downloads/UMass/leniaresults/1480283_1/aurora/unsupervised/2025-01-19_102610_515401/",
+        ]
+        for run_dir in run_dirs:
+            visualize_aurora(Path(run_dir))

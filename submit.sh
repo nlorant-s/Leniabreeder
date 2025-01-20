@@ -42,14 +42,22 @@ fi
 apptainer run --nv \
     --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
     ../leniabreeder.sif \
-    seed=$RANDOM \
-    qd=aurora \
-    hydra.run.dir=.
+    qd=aurora
+
+apptainer run --nv \
+    --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
+    --env PYTHONPATH="/workspace/src" \
+    ../leniabreeder.sif \
+    python /workspace/src/analysis/visualize_aurora.py "${PWD}"
 
 # Copy results if needed
 mkdir -p ../results/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
 if [ -d "output" ]; then
     cp -r output/* ../results/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}/
+fi
+
+if [ -d "visualization" ]; then
+    cp -r visualization/* ../results/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}/
 fi
 
 # Clean up
