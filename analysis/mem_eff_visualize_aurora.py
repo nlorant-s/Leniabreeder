@@ -20,8 +20,16 @@ from omegaconf import OmegaConf
 
 # Reduce batch size to prevent OOM
 BATCH_SIZE = 8
-# Use mixed precision
+# Memory and precision configurations
 jax.config.update('jax_default_matmul_precision', 'bfloat16')
+jax.config.update('jax_platform_name', 'gpu')  # Ensure GPU is being used
+jax.config.update('jax_enable_x64', False)  # Use 32-bit precision
+
+def clear_gpu_memory():
+    """Clear GPU memory cache."""
+    backend = jax.lib.xla_bridge.get_backend()
+    for buf in backend.live_buffers():
+        buf.delete()
 
 def plot_aurora_repertoire(config, repertoire, descriptors_3d):
     plt.clf()  # Clear any existing plots
@@ -160,7 +168,7 @@ def visualize_aurora(run_dir):
         print(f"Processing batch {i+1}/{n_batches}")
         
         # Clear GPU memory
-        jax.clear_device_memory()
+        clear_gpu_memory()
         
         # Get batch of genotypes
         start_idx = i * BATCH_SIZE
