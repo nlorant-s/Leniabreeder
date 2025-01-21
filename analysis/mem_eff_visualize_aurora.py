@@ -2,6 +2,7 @@ from pathlib import Path
 import pickle
 import json
 from functools import partial
+import gc
 
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
@@ -20,27 +21,24 @@ from omegaconf import OmegaConf
 
 # Reduce batch size to prevent OOM
 BATCH_SIZE = 8
+
 # Memory and precision configurations
 jax.config.update('jax_default_matmul_precision', 'bfloat16')
-jax.config.update('jax_platform_name', 'gpu')  # Ensure GPU is being used
-jax.config.update('jax_enable_x64', False)  # Use 32-bit precision
-
-def clear_gpu_memory():
-    """Clear GPU memory cache."""
-    backend = jax.lib.xla_bridge.get_backend()
-    for buf in backend.live_buffers():
-        buf.delete()
+jax.config.update('jax_platform_name', 'gpu')
+jax.config.update('jax_enable_x64', False)
 
 def plot_aurora_repertoire(config, repertoire, descriptors_3d):
-    plt.clf()  # Clear any existing plots
+    plt.clf()
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
     
-    # Plot repertoire
+    # Move data to CPU before plotting
+    fitnesses = jax.device_get(repertoire.fitnesses)
+    
     sc = ax.scatter(descriptors_3d[:, 0], 
                    descriptors_3d[:, 1], 
                    descriptors_3d[:, 2], 
-                   c=jax.device_get(repertoire.fitnesses), 
+                   c=fitnesses, 
                    cmap="viridis")
     
     ax.set_title(f"AURORA repertoire {config.qd.fitness}")
@@ -83,6 +81,28 @@ def save_batch_results(accum, accum_small, accum_medium, accum_large,
                           phenotypes['large'][j])
         mediapy.write_image(dirs['vae'] / f"{idx:04d}.png", 
                           phenotypes['vae'][j])
+    
+    # Clear some memory after saving
+    del phenotypes
+    gc.collect()
+
+def process_genotype_batch(lenia, init_carry, step_fns, vae, params, key, genotypes):
+    # Express genotypes
+    carries = jax.vmap(lambda g: lenia.express_genotype(init_carry, g))(genotypes)
+    
+    # Evaluate at different scales
+    results = {}
+    for name, step_fn in step_fns.items():
+        _, accum = jax.vmap(lambda c: jax.lax.scan(
+            step_fn, init=c, xs=jnp.arange(lenia._config.n_step)))(carries)
+        results[name] = accum
+
+    # Process VAE
+    key, subkey = jax.random.split(key)
+    phenotype_recon = process_vae_batch(
+        vae, params, results['small'].phenotype, subkey)
+    
+    return results['full'], results['small'], results['medium'], results['large'], phenotype_recon
 
 def visualize_aurora(run_dir):
     # Create directories
@@ -115,7 +135,7 @@ def visualize_aurora(run_dir):
     lenia = Lenia(config_lenia)
 
     # Setup evaluation functions with different sizes
-    lenia_steps = {
+    step_fns = {
         'full': partial(lenia.step, phenotype_size=config.world_size, 
                        center_phenotype=False, record_phenotype=True),
         'small': partial(lenia.step, phenotype_size=config.phenotype_size, 
@@ -133,7 +153,7 @@ def visualize_aurora(run_dir):
         reconstruction_fn=reconstruction_fn, 
         path=str(run_dir) + "/repertoire/")
 
-    # Compute t-SNE on CPU
+    # Move repertoire data to CPU for t-SNE
     print("Computing t-SNE...")
     descriptors = jax.device_get(repertoire.descriptors)
     tsne = TSNE(n_components=3, perplexity=10., method='barnes_hut', n_jobs=-1)
@@ -164,38 +184,26 @@ def visualize_aurora(run_dir):
 
     # Process genotypes in batches
     n_batches = repertoire.size // BATCH_SIZE
+    genotypes = jax.device_get(repertoire.genotypes)  # Move to CPU once
+    
     for i in range(n_batches):
         print(f"Processing batch {i+1}/{n_batches}")
-        
-        # Clear GPU memory
-        clear_gpu_memory()
         
         # Get batch of genotypes
         start_idx = i * BATCH_SIZE
         end_idx = start_idx + BATCH_SIZE
-        genotypes_batch = repertoire.genotypes[start_idx:end_idx]
-
-        # Process batch
-        carries = jax.vmap(lambda g: lenia.express_genotype(init_carry, g))(
-            genotypes_batch)
+        genotypes_batch = jax.device_put(genotypes[start_idx:end_idx])  # Move batch to GPU
         
-        # Evaluate at different scales
-        results = {}
-        for name, step_fn in lenia_steps.items():
-            _, accum = jax.vmap(lambda c: jax.lax.scan(
-                step_fn, init=c, xs=jnp.arange(lenia._config.n_step)))(carries)
-            results[name] = accum
-
-        # Process VAE
-        key, subkey = jax.random.split(key)
-        phenotype_recon = process_vae_batch(
-            vae, params, results['small'].phenotype, subkey)
-
+        # Process batch
+        results = process_genotype_batch(
+            lenia, init_carry, step_fns, vae, params, key, genotypes_batch)
+        
         # Save results
-        save_batch_results(
-            results['full'], results['small'], 
-            results['medium'], results['large'],
-            phenotype_recon, i, dirs)
+        save_batch_results(*results, i, dirs)
+        
+        # Clear batch from GPU
+        del results, genotypes_batch
+        gc.collect()
 
 if __name__ == "__main__":
     import sys
