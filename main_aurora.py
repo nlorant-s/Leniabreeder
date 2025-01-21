@@ -93,7 +93,11 @@ def main(config: DictConfig) -> None:
 			# Calculate novelty as minimum distance to archive
 			distances = jnp.linalg.norm(latent_mean - archive_latents, axis=-1)
 			novelty = jnp.min(distances + 1e6 * (distances == 0))
-			return stability + config.qd.novelty_weight * novelty
+			novelty_weight = config.qd.novelty_weight
+			if novelty_weight > 0:
+				return stability * (1 - novelty_weight) + novelty_weight * novelty
+			else:
+				return stability
 		
 		return stability
 
