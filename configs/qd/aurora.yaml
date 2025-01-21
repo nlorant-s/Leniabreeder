@@ -4,7 +4,7 @@ novelty_weight: 0.5  # Balance between stability and novelty
 
 # General
 n_generations: 50
-log_interval: 10
+log_interval: 1
 batch_size: 256
 
 # Repertoire
