@@ -23,9 +23,9 @@ WORKDIR="run_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p ${WORKDIR}
 cd ${WORKDIR}
 
-# # Build container with conda base
-# cd ../apptainer
-# APPTAINER_NOHTTPS=1 apptainer build --force ../leniabreeder.sif container.def
+# Build container with conda base
+cd ../apptainer
+APPTAINER_NOHTTPS=1 apptainer build --force ../leniabreeder.sif container.def
 
 cd ../${WORKDIR}
 
