@@ -84,35 +84,44 @@ def main(config: DictConfig) -> None:
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
 		latent_mean = jnp.mean(latents, axis=-2)
 		
-		# Calculate stability (original metric)
+		# Calculate stability
 		temporal_distances = jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1)
-		stability = -jnp.mean(temporal_distances, axis=-1)		
-		stability_normalized = 1 / (1 + jnp.exp(-stability))
-
-		# Get batch of existing latents from repertoire if available
+		mean_distance = jnp.mean(temporal_distances, axis=-1)
+		
+		# Normalize stability using soft exponential decay
+		# This gives high scores (near 1) for very stable solutions
+		# and asymptotically approaches 0 for unstable ones
+		stability_scale = 2.0  # Tune this based on typical distances
+		stability_normalized = jnp.exp(-stability_scale * mean_distance)
+		
+		# Calculate novelty if archive exists
 		if hasattr(observation, 'archive_latents'):
 			archive_latents = observation.archive_latents
-
-			# Calculate novelty as average distance from archive, excluding self
+			
+			# Calculate distances to archive points
 			distances = jnp.linalg.norm(latent_mean - archive_latents, axis=-1)
-			# Create mask that's 0 for self-comparisons, 1 otherwise
-			mask = (distances > 1e-6).astype(jnp.float32)  # small epsilon for numerical stability
-			# Calculate mean distance excluding self (using mask)
-			novelty = jnp.sum(distances * mask) / (jnp.sum(mask) + 1e-6)
-			novelty_normalized = 1 / (1 + jnp.exp(-novelty))
+			
+			# Exclude self-comparisons
+			mask = (distances > 1e-6).astype(jnp.float32)
+			
+			# Get k-nearest neighbors distance (more robust than mean)
+			k = 5  # Number of neighbors to consider
+			distances_sorted = jnp.sort(distances * mask + 1e6 * (1 - mask))
+			knn_distance = jnp.mean(distances_sorted[:k])
+			
+			# Normalize novelty using adaptive sigmoid
+			# This maintains sensitivity in the typical range while handling outliers
+			novelty_scale = 2.0  # Tune this based on typical distances
+			novelty_shift = 1.0  # Centers sigmoid around typical distances
+			novelty_normalized = 1 / (1 + jnp.exp(-(knn_distance - novelty_shift) * novelty_scale))
 		else:
-			novelty_normalized = 1
-
-		# Local sparsity measure
-		radius = 0.5 # TODO: how large should the radius be?
-		neighbor_count = jnp.sum(distances < radius)
-		sparsity = 1.0 / (1.0 + neighbor_count)
-
-		# Combine fitness components
+			novelty_normalized = 1.0
+			
+		# Combine metrics
 		novelty_weight = config.qd.novelty_weight
-		combined_fitness = (stability_normalized * (1 - novelty_weight) 
-							+ novelty_normalized * novelty_weight) #TODO: dynamic novelty weight
-	
+		combined_fitness = (stability_normalized * (1 - novelty_weight) + 
+						   novelty_normalized * novelty_weight)
+		
 		return combined_fitness
 
 	def fitness_fn(observation, train_state, key):
