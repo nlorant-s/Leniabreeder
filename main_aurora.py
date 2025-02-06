@@ -85,21 +85,35 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		
 		# Calculate stability (original metric)
-		stability = -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
-		
+		temporal_distances = jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1)
+		stability = -jnp.mean(temporal_distances, axis=-1)		
+		stability_normalized = 1 / (1 + jnp.exp(-stability))
+
 		# Get batch of existing latents from repertoire if available
 		if hasattr(observation, 'archive_latents'):
 			archive_latents = observation.archive_latents
-			# Calculate novelty as average distance from archive
+
+			# Calculate novelty as average distance from archive, excluding self
 			distances = jnp.linalg.norm(latent_mean - archive_latents, axis=-1)
-			novelty = -jnp.mean(distances + 1e6 * (distances == 0))
-			novelty_weight = config.qd.novelty_weight
-			if novelty_weight > 0:
-				return stability * (1 - novelty_weight) + novelty_weight * novelty
-			else:
-				return stability
-		
-		return stability
+			# Create mask that's 0 for self-comparisons, 1 otherwise
+			mask = (distances > 1e-6).astype(jnp.float32)  # small epsilon for numerical stability
+			# Calculate mean distance excluding self (using mask)
+			novelty = jnp.sum(distances * mask) / (jnp.sum(mask) + 1e-6)
+			novelty_normalized = 1 / (1 + jnp.exp(-novelty))
+		else:
+			novelty_normalized = 1
+
+		# Local sparsity measure
+		radius = 0.5 # TODO: how large should the radius be?
+		neighbor_count = jnp.sum(distances < radius)
+		sparsity = 1.0 / (1.0 + neighbor_count)
+
+		# Combine fitness components
+		novelty_weight = config.qd.novelty_weight
+		combined_fitness = (stability_normalized * (1 - novelty_weight) 
+							+ novelty_normalized * novelty_weight) #TODO: dynamic novelty weight
+	
+		return combined_fitness
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
