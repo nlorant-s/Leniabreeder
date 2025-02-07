@@ -78,51 +78,49 @@ def main(config: DictConfig) -> None:
 	def latent_mean(observation, train_state, key):
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
 		return jnp.mean(latents, axis=-2)
-
-	def latent_variance(observation, train_state, key):
-		# Get latent representations
+	
+	def novelty(observation, train_state, key):
+		# Get latent representation of current observation
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
 		latent_mean = jnp.mean(latents, axis=-2)
 		
-		# Calculate stability
-		temporal_distances = jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1)
-		mean_distance = jnp.mean(temporal_distances, axis=-1)
+		# Default novelty for first point when no archive exists
+		if not hasattr(observation, 'archive_latents'):
+			return jnp.ones_like(latent_mean[..., 0])
+
+		# Calculate distances to all archive points
+		archive_latents = observation.archive_latents
+		distances = jnp.linalg.norm(latent_mean - archive_latents, axis=-1)
 		
-		# Normalize stability using soft exponential decay
-		# This gives high scores (near 1) for very stable solutions
-		# and asymptotically approaches 0 for unstable ones
-		stability_scale = 2.0  # Tune this based on typical distances
-		stability_normalized = jnp.exp(-stability_scale * mean_distance)
+		# Exclude self-comparisons by masking near-zero distances
+		mask = (distances > 1e-6).astype(jnp.float32)
+		masked_distances = distances * mask + (1 - mask) * jnp.inf
 		
-		# Calculate novelty if archive exists
-		if hasattr(observation, 'archive_latents'):
-			archive_latents = observation.archive_latents
-			
-			# Calculate distances to archive points
-			distances = jnp.linalg.norm(latent_mean - archive_latents, axis=-1)
-			
-			# Exclude self-comparisons
-			mask = (distances > 1e-6).astype(jnp.float32)
-			
-			# Get k-nearest neighbors distance (more robust than mean)
-			k = 5  # Number of neighbors to consider
-			distances_sorted = jnp.sort(distances * mask + 1e6 * (1 - mask))
-			knn_distance = jnp.mean(distances_sorted[:k])
-			
-			# Normalize novelty using adaptive sigmoid
-			# This maintains sensitivity in the typical range while handling outliers
-			novelty_scale = 2.0  # Tune this based on typical distances
-			novelty_shift = 1.0  # Centers sigmoid around typical distances
-			novelty_normalized = 1 / (1 + jnp.exp(-(knn_distance - novelty_shift) * novelty_scale))
-		else:
-			novelty_normalized = 1.0
-			
-		# Combine metrics
-		novelty_weight = config.qd.novelty_weight
-		combined_fitness = (stability_normalized * (1 - novelty_weight) + 
-						   novelty_normalized * novelty_weight)
+		# Find k nearest neighbors
+		k = min(15, len(masked_distances) - 1)  # Use up to 15 neighbors
+		k_nearest = jnp.partition(masked_distances, k)[:k]
 		
-		return combined_fitness
+		# Calculate novelty as mean distance to k nearest neighbors
+		novelty_score = jnp.mean(k_nearest)
+		
+		# Normalize the novelty score to [0,1] range using archive statistics
+		max_dist = jnp.max(distances)
+		min_dist = jnp.min(masked_distances[masked_distances != jnp.inf])
+		novelty_normalized = (novelty_score - min_dist) / (max_dist - min_dist + 1e-8)
+		
+		return novelty_normalized
+
+	def latent_variance(observation, train_state, key):
+		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
+		latent_mean = jnp.mean(latents, axis=-2)
+		variance = -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
+
+		# Normalize variance
+		min_variance = jnp.min(variance)
+		max_variance = jnp.max(variance)
+		normalized_variance = (variance - min_variance) / (max_variance - min_variance + 1e-8)
+
+		return normalized_variance * (1 - config.qd.novelty_weight) + config.qd.novelty_weight * novelty(observation, train_state, key)
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
