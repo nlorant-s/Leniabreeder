@@ -110,7 +110,7 @@ def main(config: DictConfig) -> None:
 		
 		return novelty_normalized
 
-	def latent_variance(observation, train_state, key):
+	def fitness_unsupervised(observation, train_state, key):
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
 		latent_mean = jnp.mean(latents, axis=-2)
 		variance = -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
@@ -123,9 +123,14 @@ def main(config: DictConfig) -> None:
 		# return normalized_variance
 		return normalized_variance * (1 - config.qd.novelty_weight) + config.qd.novelty_weight * novelty(observation, train_state, key)
 
+	def latent_variance(observation, train_state, key):
+		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
+		latent_mean = jnp.mean(latents, axis=-2)
+		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
+
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
-			fitness = latent_variance(observation, train_state, key)
+			fitness = fitness_unsupervised(observation, train_state, key)
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
