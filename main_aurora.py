@@ -120,7 +120,8 @@ def main(config: DictConfig) -> None:
 		max_variance = jnp.max(variance)
 		normalized_variance = (variance - min_variance) / (max_variance - min_variance + 1e-8)
 
-		return normalized_variance * (1 - config.qd.novelty_weight) + config.qd.novelty_weight * novelty(observation, train_state, key)
+		return normalized_variance
+		# return normalized_variance * (1 - config.qd.novelty_weight) + config.qd.novelty_weight * novelty(observation, train_state, key)
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
