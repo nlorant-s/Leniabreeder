@@ -84,6 +84,13 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
 
+	def unsupervised(observation, train_state, key):
+		homeostasis = latent_variance(observation, train_state, key)
+		novelty = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
+		sparsity = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
+
+		return homeostasis + novelty + sparsity
+
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
 			fitness = latent_variance(observation, train_state, key)
