@@ -101,7 +101,12 @@ def main(config: DictConfig) -> None:
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
-			fitness = latent_variance(observation, train_state, key)
+			scores = unsupervised(observation, train_state, key)
+			fitness = jnp.array([
+				scores["homeostasis"],
+				scores["novelty"],
+				scores["sparsity"]
+			])
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
@@ -242,7 +247,11 @@ def main(config: DictConfig) -> None:
 		descriptor_fn=descriptor_fn,
 		train_fn=train_fn,
 		metrics_fn=metrics_fn,
+		latent_space=3,
 	)
+
+	logging.info(f"Fitness dimensions: {aurora.latent_space}")
+	logging.info(f"Fitness labels: {config.qd.fitness_labels}")
 
 	# Init step of the aurora algorithm
 	logging.info("Initializing AURORA...")
@@ -256,7 +265,7 @@ def main(config: DictConfig) -> None:
 		key,
 	)
 
-	metrics = dict.fromkeys(["generation", "qd_score", "coverage", "max_fitness", "loss", "recon_loss", "kld_loss", "learning_rate", "n_elites", "variance", "time"], jnp.array([]))
+	metrics = dict.fromkeys(["generation", "qd_score", "coverage", "max_fitness_homeostasis", "max_fitness_novelty", "max_fitness_sparsity", "loss", "recon_loss", "kld_loss", "learning_rate", "n_elites", "variance", "time"], jnp.array([]))
 	csv_logger = CSVLogger("./log.csv", header=list(metrics.keys()))
 
 	# Main loop
