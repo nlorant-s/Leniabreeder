@@ -93,20 +93,11 @@ def main(config: DictConfig) -> None:
 		logging.info(f"Stats - Novelty: min={n.min():.3f}, max={n.max():.3f}")
 		logging.info(f"Stats - Sparsity: min={s.min():.3f}, max={s.max():.3f}")
 
-		return {
-			"homeostasis": h,
-			"novelty": n,
-			"sparsity": s,
-		}
+		return h, n, s
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
-			scores = unsupervised(observation, train_state, key)
-			fitness = jnp.array([
-				scores["homeostasis"],
-				scores["novelty"],
-				scores["sparsity"]
-			])
+			fitness = unsupervised(observation, train_state, key)
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1

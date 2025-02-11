@@ -18,9 +18,6 @@ secondary_fitness: null
 secondary_fitness_weight: 1.
 n_keep: 16
 
-fitness_labels: ["homeostasis", "novelty", "sparsity"]
-fitness_weights: [0.4, 0.4, 0.2]
-
 # AE
 features: 128
 hidden_size: 6
