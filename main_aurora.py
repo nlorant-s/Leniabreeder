@@ -93,7 +93,7 @@ def main(config: DictConfig) -> None:
 		logging.info(f"Stats - Novelty: min={n.min():.3f}, max={n.max():.3f}")
 		logging.info(f"Stats - Sparsity: min={s.min():.3f}, max={s.max():.3f}")
 
-		return h, n, s
+		return h + n + s
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
