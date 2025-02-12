@@ -77,27 +77,24 @@ def main(config: DictConfig) -> None:
 	# Define the scoring function
 	def latent_mean(observation, train_state, key):
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
-		return jnp.mean(latents, axis=-2)
+		return jnp.mean(latents, axis=1)
 
 	def latent_variance(observation, train_state, key):
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
-		latent_mean = jnp.mean(latents, axis=-2)
-		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
+		latent_mean = jnp.mean(latents, axis=1, keepdims=True)
+		distances = jnp.linalg.norm(latents - latent_mean, axis=-1)
+		return -jnp.mean(distances, axis=1)
 
 	def unsupervised(observation, train_state, key):
 		# Calculate the three objectives
 		h = latent_variance(observation, train_state, key)
 		
-		# For n calculation, explicitly reshape mean if needed
 		latent_means = latent_mean(observation, train_state, key)
 		mean_across_batch = latent_means.mean(axis=0)
 		n = jnp.linalg.norm(latent_means - mean_across_batch, axis=-1)
 		
-		# Calculate s with explicit dimensions
 		s = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
 		
-		# Ensure h is a vector if it's a scalar
-		h = jnp.broadcast_to(h, n.shape)
 		# Add shape assertions
 		assert h.ndim == 1, f"h should be 1D, got shape {h.shape}"
 		assert n.ndim == 1, f"n should be 1D, got shape {n.shape}"
