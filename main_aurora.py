@@ -77,32 +77,24 @@ def main(config: DictConfig) -> None:
 	# Define the scoring function
 	def latent_mean(observation, train_state, key):
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
-		return jnp.mean(latents, axis=1)
+		return jnp.mean(latents, axis=-2)
 
 	def latent_variance(observation, train_state, key):
 		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
-		latent_mean = jnp.mean(latents, axis=1, keepdims=True)
-		distances = jnp.linalg.norm(latents - latent_mean, axis=-1)
-		return -jnp.mean(distances, axis=1)
+		latent_mean = jnp.mean(latents, axis=-2)
+		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-2)
 
 	def unsupervised(observation, train_state, key):
 		# Calculate the three objectives
 		h = latent_variance(observation, train_state, key)
-		
-		latent_means = latent_mean(observation, train_state, key)
-		mean_across_batch = latent_means.mean(axis=0)
-		n = jnp.linalg.norm(latent_means - mean_across_batch, axis=-1)
-		
+		n = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
 		s = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
 		
-		# Add shape assertions
-		assert h.ndim == 1, f"h should be 1D, got shape {h.shape}"
-		assert n.ndim == 1, f"n should be 1D, got shape {n.shape}"
-		assert s.ndim == 1, f"s should be 1D, got shape {s.shape}"
-		assert h.shape == n.shape == s.shape, f"Objectives should have same shape, got {h.shape}, {n.shape}, {s.shape}"
-		
+		h = h[..., None]
+
 		# Stack objectives into a single array for comparison
-		objectives = jnp.stack([h, n, s], axis=-1)
+		objectives = jnp.stack([h, n[..., None], s[..., None]], axis=-1)  # shape: (batch_size, 1, 3)
+		objectives = jnp.squeeze(objectives, axis=-2)  # shape: (batch_size, 3)
 		
 		# Calculate Pareto dominance count
 		batch_size = objectives.shape[0]
