@@ -90,6 +90,12 @@ def main(config: DictConfig) -> None:
 		n = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
 		s = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
 		
+		# Add shape assertions
+		assert h.ndim == 1, f"h should be 1D, got shape {h.shape}"
+		assert n.ndim == 1, f"n should be 1D, got shape {n.shape}"
+		assert s.ndim == 1, f"s should be 1D, got shape {s.shape}"
+		assert h.shape == n.shape == s.shape, f"Objectives should have same shape, got {h.shape}, {n.shape}, {s.shape}"
+		
 		# Stack objectives into a single array for comparison
 		objectives = jnp.stack([h, n, s], axis=-1)
 		
