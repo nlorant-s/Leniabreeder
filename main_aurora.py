@@ -84,55 +84,70 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-2)
 
-	def unsupervised(observation, train_state, key):
-		# h needs to be broadcasted to match batch dimensions
-		h = latent_variance(observation, train_state, key)
-		h = jnp.full((observation.phenotype.shape[0],), h)  # broadcast scalar to batch size
-		
-		mean_latents = latent_mean(observation, train_state, key)
-		# n and s maintain batch dimensions
-		n = jnp.linalg.norm(
-			mean_latents - mean_latents.mean(axis=0), 
-			axis=-1
-		)
-		s = jnp.linalg.norm(
-			jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), 
-			axis=-1
-		)
-		
-		# Stack objectives for pareto ranking
-		objectives = jnp.stack([h, n, s], axis=-1)
+	def unsupervised(fitnesses):
+		"""Calculates Pareto rankings based on pre-calculated fitness scores."""
+		objectives = jnp.stack(fitnesses, axis=-1)  # Shape: (batch_size, 3)
 
-		# Calculate dominance matrix
-		batch_size = objectives.shape[0]
-		dominance = jnp.zeros((batch_size, batch_size))
+		# Compute Pareto rankings
+		pareto_rank = jnp.zeros(objectives.shape[0], dtype=jnp.int32)
+		for i in range(objectives.shape[0]):
+			for j in range(objectives.shape[0]):
+				if i == j:
+					continue
+				if jnp.all(objectives[i] <= objectives[j]) and jnp.any(objectives[i] < objectives[j]):
+					pareto_rank = jax.ops.index_add(pareto_rank, i, 1)
 
-		def count_dominance(i, dominance):
-			# Compare solution i with all other solutions
-			solution_i = objectives[i]
-			# Count how many objectives are better (greater) for each solution
-			better = objectives >= solution_i[None, :]
-			# Count how many objectives are worse (smaller) for each solution
-			worse = objectives <= solution_i[None, :]
-			# A solution dominates if it's better in at least one objective and not worse in any
-			dominates = (better.sum(axis=-1) > 0) & (worse.sum(axis=-1) == objectives.shape[-1])
-			# Update dominance count for solution i
-			dominance = dominance.at[i].set(dominates.sum())
-			return dominance
+		return pareto_rank
 
-		# Calculate dominance count for each solution
-		dominance = jax.lax.fori_loop(0, batch_size, count_dominance, dominance)
+	def unsupervised(fitnesses):
+		"""Calculates Pareto rankings based on pre-calculated fitness scores."""
+		objectives = jnp.stack(fitnesses, axis=-1)  # Shape: (batch_size, 3)
 
-		# Convert dominance counts to fitness (lower count = better rank = higher fitness)
-		fitness = -dominance
+		# Compute Pareto rankings
+		pareto_rank = jnp.zeros(objectives.shape[0], dtype=jnp.int32)
+		for i in range(objectives.shape[0]):
+			for j in range(objectives.shape[0]):
+				if i == j:
+					continue
+				if jnp.all(objectives[i] <= objectives[j]) and jnp.any(objectives[i] < objectives[j]):
+					pareto_rank = jax.ops.index_add(pareto_rank, i, 1)
 
-		return fitness
-		
-		
+		return pareto_rank
+
+	def batch_fitness(observation, train_state, key, batch_fitnesses=None, batch_phenotypes=None, current_index=None):
+		"""Calculates and stores fitness scores for a batch of individuals."""
+		# Calculate fitness for the individual observation
+		if config.qd.fitness == "unsupervised":
+			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep) # Or whatever metric you are using
+		else:
+			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
+
+		batch_fitnesses = jax.ops.index_update(batch_fitnesses, current_index, fitness)
+		batch_phenotypes = jax.ops.index_update(batch_phenotypes, jax.ops.index[current_index], observation.phenotype[-1])
+
+		return batch_fitnesses, batch_phenotypes
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
-			fitness = unsupervised(observation, train_state, key)
+			# Create empty jnp array
+			batch_fitnesses = jnp.zeros((config.qd.batch_size,))
+			batch_phenotypes = jnp.zeros((config.qd.batch_size, config.phenotype_size, config.phenotype_size, lenia.n_channel))
+			current_index = jnp.array(0)
+
+			def scan_fitness(carry, _):
+				batch_fitnesses, batch_phenotypes, current_index = carry
+				batch_fitnesses, batch_phenotypes = batch_fitness(observation, train_state, key, batch_fitnesses, batch_phenotypes, current_index)
+				current_index += 1
+				return (batch_fitnesses, batch_phenotypes, current_index), None
+
+			(batch_fitnesses, batch_phenotypes, current_index), _ = jax.lax.scan(
+				scan_fitness,
+				(batch_fitnesses, batch_phenotypes, current_index),
+				jnp.arange(config.qd.batch_size)
+			)
+
+			pareto_rank = unsupervised(batch_fitnesses)
+			return pareto_rank
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
