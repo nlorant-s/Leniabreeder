@@ -98,33 +98,35 @@ def main(config: DictConfig) -> None:
 			jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), 
 			axis=-1
 		)
-		
-		# Since h is scalar, just use n and s for Pareto comparison
-		objectives = jnp.stack([n, s], axis=-1)  # Shape: (batch_size, 2)
-		
+		    # Stack objectives for pareto ranking
+		objectives = jnp.stack([h, n, s], axis=-1)
+
+		# Calculate dominance matrix
 		batch_size = objectives.shape[0]
-		dominance_matrix = jnp.zeros((batch_size, batch_size))
-		
-		def is_dominated(obj1, obj2):
-			better_or_equal = (obj2 >= obj1).all()
-			strictly_better = (obj2 > obj1).any()
-			return jnp.logical_and(better_or_equal, strictly_better).astype(jnp.float32)
-		
-		# Calculate dominance relationships using only n and s
-		for i in range(batch_size):
-			for j in range(batch_size):
-				if i != j:
-					dominance_matrix = dominance_matrix.at[i, j].set(
-						is_dominated(objectives[i], objectives[j])
-					)
-		
-		# Calculate fitness as combination of Pareto dominance and h
-		pareto_fitness = -jnp.sum(dominance_matrix, axis=1)
-		
-		# Combine with h (you might want to adjust the weighting)
-		fitness = pareto_fitness + h
-		
+		dominance = jnp.zeros((batch_size, batch_size))
+
+		def count_dominance(i, dominance):
+			# Compare solution i with all other solutions
+			solution_i = objectives[i]
+			# Count how many objectives are better (greater) for each solution
+			better = objectives >= solution_i[None, :]
+			# Count how many objectives are worse (smaller) for each solution
+			worse = objectives <= solution_i[None, :]
+			# A solution dominates if it's better in at least one objective and not worse in any
+			dominates = (better.sum(axis=-1) > 0) & (worse.sum(axis=-1) == objectives.shape[-1])
+			# Update dominance count for solution i
+			dominance = dominance.at[i].set(dominates.sum())
+			return dominance
+
+		# Calculate dominance count for each solution
+		dominance = jax.lax.fori_loop(0, batch_size, count_dominance, dominance)
+
+		# Convert dominance counts to fitness (lower count = better rank = higher fitness)
+		fitness = -dominance
+
 		return fitness
+		
+		
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
