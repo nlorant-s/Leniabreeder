@@ -89,10 +89,6 @@ def main(config: DictConfig) -> None:
 		n = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
 		s = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
 
-		logging.info(f"Stats - Homeostasis: min={h.min():.3f}, max={h.max():.3f}")
-		logging.info(f"Stats - Novelty: min={n.min():.3f}, max={n.max():.3f}")
-		logging.info(f"Stats - Sparsity: min={s.min():.3f}, max={s.max():.3f}")
-
 		return h + n + s
 
 	def fitness_fn(observation, train_state, key):
