@@ -87,9 +87,17 @@ def main(config: DictConfig) -> None:
 	def unsupervised(observation, train_state, key):
 		# Calculate the three objectives
 		h = latent_variance(observation, train_state, key)
-		n = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
+		
+		# For n calculation, explicitly reshape mean if needed
+		latent_means = latent_mean(observation, train_state, key)
+		mean_across_batch = latent_means.mean(axis=0)
+		n = jnp.linalg.norm(latent_means - mean_across_batch, axis=-1)
+		
+		# Calculate s with explicit dimensions
 		s = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
 		
+		# Ensure h is a vector if it's a scalar
+		h = jnp.broadcast_to(h, n.shape)
 		# Add shape assertions
 		assert h.ndim == 1, f"h should be 1D, got shape {h.shape}"
 		assert n.ndim == 1, f"n should be 1D, got shape {n.shape}"
