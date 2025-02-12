@@ -85,15 +85,37 @@ def main(config: DictConfig) -> None:
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
 
 	def unsupervised(observation, train_state, key):
+		# Calculate the three objectives
 		h = latent_variance(observation, train_state, key)
 		n = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
 		s = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
-
-		return h + n + s
+		
+		# Stack objectives into a single array for comparison
+		objectives = jnp.stack([h, n, s], axis=-1)
+		
+		# Calculate Pareto dominance count
+		batch_size = objectives.shape[0]
+		dominance_count = jnp.zeros(batch_size)
+		
+		def count_dominated(i, count):
+			current = objectives[i]
+			# Check if current solution dominates others
+			dominates = jnp.all(current >= objectives, axis=1) & jnp.any(current > objectives, axis=1)
+			# Don't count self-dominance
+			dominates = dominates.at[i].set(False)
+			return count + jnp.sum(dominates)
+		
+		dominance_count = jax.lax.fori_loop(
+			0, batch_size,
+			count_dominated,
+			dominance_count
+		)
+		
+		return dominance_count
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
-			fitness = latent_variance(observation, train_state, key)
+			fitness = unsupervised(observation, train_state, key)
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
