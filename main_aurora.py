@@ -136,7 +136,10 @@ def main(config: DictConfig) -> None:
 
 			def scan_fitness(carry, _):
 				batch_fitnesses, batch_phenotypes, current_index = carry
-				batch_fitnesses, batch_phenotypes = batch_fitness(observation, train_state, key, batch_fitnesses, batch_phenotypes, current_index)
+				# Pass the entire 'accum' to batch_fitness
+				fitness = fitness_fn(observation, train_state, key)
+				batch_fitnesses = jax.ops.index_update(batch_fitnesses, current_index, fitness)
+				batch_phenotypes = jax.ops.index_update(batch_phenotypes, jax.ops.index[current_index], observation.phenotype[-1])
 				current_index += 1
 				return (batch_fitnesses, batch_phenotypes, current_index), None
 
