@@ -136,8 +136,8 @@ def main(config: DictConfig) -> None:
 
 			def scan_fitness(carry, _):
 				batch_fitnesses, batch_phenotypes, current_index = carry
-				# Pass the entire 'accum' to batch_fitness
-				fitness = fitness_fn(observation, train_state, key)
+				# Pass the *observation* to batch_fitness, not the fitness_fn
+				fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 				batch_fitnesses = jax.ops.index_update(batch_fitnesses, current_index, fitness)
 				batch_phenotypes = jax.ops.index_update(batch_phenotypes, jax.ops.index[current_index], observation.phenotype[-1])
 				current_index += 1
