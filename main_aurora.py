@@ -85,8 +85,9 @@ def main(config: DictConfig) -> None:
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-2)
 
 	def unsupervised(observation, train_state, key):
-		# h is scalar and will be the same for all batch elements
+		# h needs to be broadcasted to match batch dimensions
 		h = latent_variance(observation, train_state, key)
+		h = jnp.full((observation.phenotype.shape[0],), h)  # broadcast scalar to batch size
 		
 		mean_latents = latent_mean(observation, train_state, key)
 		# n and s maintain batch dimensions
@@ -98,7 +99,8 @@ def main(config: DictConfig) -> None:
 			jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), 
 			axis=-1
 		)
-		    # Stack objectives for pareto ranking
+		
+		# Stack objectives for pareto ranking
 		objectives = jnp.stack([h, n, s], axis=-1)
 
 		# Calculate dominance matrix
