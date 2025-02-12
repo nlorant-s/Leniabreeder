@@ -85,36 +85,46 @@ def main(config: DictConfig) -> None:
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-2)
 
 	def unsupervised(observation, train_state, key):
-		# Calculate the three objectives
+		# h is scalar and will be the same for all batch elements
 		h = latent_variance(observation, train_state, key)
-		n = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
-		s = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
 		
-		h = h[..., None]
-
-		# Stack objectives into a single array for comparison
-		objectives = jnp.stack([h, n[..., None], s[..., None]], axis=-1)  # shape: (batch_size, 1, 3)
-		objectives = jnp.squeeze(objectives, axis=-2)  # shape: (batch_size, 3)
-		
-		# Calculate Pareto dominance count
-		batch_size = objectives.shape[0]
-		dominance_count = jnp.zeros(batch_size)
-		
-		def count_dominated(i, count):
-			current = objectives[i]
-			# Check if current solution dominates others
-			dominates = jnp.all(current >= objectives, axis=1) & jnp.any(current > objectives, axis=1)
-			# Don't count self-dominance
-			dominates = dominates.at[i].set(False)
-			return count + jnp.sum(dominates)
-		
-		dominance_count = jax.lax.fori_loop(
-			0, batch_size,
-			count_dominated,
-			dominance_count
+		mean_latents = latent_mean(observation, train_state, key)
+		# n and s maintain batch dimensions
+		n = jnp.linalg.norm(
+			mean_latents - mean_latents.mean(axis=0), 
+			axis=-1
+		)
+		s = jnp.linalg.norm(
+			jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), 
+			axis=-1
 		)
 		
-		return dominance_count
+		# Since h is scalar, just use n and s for Pareto comparison
+		objectives = jnp.stack([n, s], axis=-1)  # Shape: (batch_size, 2)
+		
+		batch_size = objectives.shape[0]
+		dominance_matrix = jnp.zeros((batch_size, batch_size))
+		
+		def is_dominated(obj1, obj2):
+			better_or_equal = (obj2 >= obj1).all()
+			strictly_better = (obj2 > obj1).any()
+			return jnp.logical_and(better_or_equal, strictly_better).astype(jnp.float32)
+		
+		# Calculate dominance relationships using only n and s
+		for i in range(batch_size):
+			for j in range(batch_size):
+				if i != j:
+					dominance_matrix = dominance_matrix.at[i, j].set(
+						is_dominated(objectives[i], objectives[j])
+					)
+		
+		# Calculate fitness as combination of Pareto dominance and h
+		pareto_fitness = -jnp.sum(dominance_matrix, axis=1)
+		
+		# Combine with h (you might want to adjust the weighting)
+		fitness = pareto_fitness + h
+		
+		return fitness
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":

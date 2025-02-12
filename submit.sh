@@ -24,10 +24,10 @@ mkdir -p ${WORKDIR}
 cd ${WORKDIR}
 
 # Build container with conda base
-cd ../apptainer
-APPTAINER_NOHTTPS=1 apptainer build --force ../leniabreeder.sif container.def
+# cd ../apptainer
+# APPTAINER_NOHTTPS=1 apptainer build --force ../leniabreeder.sif container.def
 
-cd ../${WORKDIR}
+# cd ../${WORKDIR}
 
 # Run the experiment
 apptainer run --nv \
