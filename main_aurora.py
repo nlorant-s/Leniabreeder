@@ -32,7 +32,6 @@ def main(config: DictConfig) -> None:
 
 	# Lenia
 	logging.info("Initializing Lenia...")
-	logging.info(f"Fitness: {config['qd']['fitness']}")
 	config_lenia = ConfigLenia(
 		# Init pattern
 		pattern_id=config.pattern_id,

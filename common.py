@@ -7,9 +7,7 @@ from omegaconf import OmegaConf
 
 
 def get_metric(observation, metric, n_keep):
-	print(f"Metric value: '{metric}', Type: {type(metric)}")  # Debug line
-
-	if metric == "unsupervised":
+	if not "_" in metric:
 		return jnp.full((2,), -jnp.inf)  # 2 objectives: novelty and sparsity
 	else:
 		sign, *metric, operator = metric.split("_")
