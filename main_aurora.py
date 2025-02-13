@@ -109,23 +109,26 @@ def main(config: DictConfig) -> None:
 
 	@partial(jax.jit, static_argnames=())
 	def fitness_fn(observation, train_state, key):
-		# Calculate objectives
-		novelty_score = novelty(observation, train_state, key)
-		sparsity_score = sparsity(observation, train_state, key)
-		
-		assert novelty_score.shape == sparsity_score.shape, "Objective shapes must match"
-		
-		# Stack objectives with shape (n_objectives,)
-		objectives = jnp.stack([novelty_score, sparsity_score])
-		
-		# Check for failed simulations
-		failed = jnp.logical_or(observation.stats.is_empty.any(), observation.stats.is_full.any())
-		failed = jnp.logical_or(failed, observation.stats.is_spread.any())
-		
-		# Set failed solutions to -inf
-		objectives = jnp.where(failed, -jnp.inf, objectives)
-		
-		return objectives
+		if config.qd.fitness == "unsupervised":
+			# Calculate objectives
+			novelty_score = novelty(observation, train_state, key)
+			sparsity_score = sparsity(observation, train_state, key)
+			
+			assert novelty_score.shape == sparsity_score.shape, "Objective shapes must match"
+			
+			# Stack objectives with shape (n_objectives,)
+			objectives = jnp.stack([novelty_score, sparsity_score])
+			
+			# Check for failed simulations
+			failed = jnp.logical_or(observation.stats.is_empty.any(), observation.stats.is_full.any())
+			failed = jnp.logical_or(failed, observation.stats.is_spread.any())
+			
+			# Set failed solutions to -inf
+			objectives = jnp.where(failed, -jnp.inf, objectives)
+			
+			return objectives
+		else:
+			raise ValueError(f"Unsupported fitness metric: {config.qd.fitness}")
 
 	def descriptor_fn(observation, train_state, key):
 		descriptor_unsupervised = latent_mean(observation, train_state, key)
