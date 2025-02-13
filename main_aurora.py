@@ -127,10 +127,22 @@ def main(config: DictConfig) -> None:
 			objectives = jnp.where(failed, -jnp.inf, objectives)
 			
 			return objectives
-		elif "_" in config.qd.fitness:  # Handle metric-based fitness
-			return get_metric(observation, config.qd.fitness, config.qd.n_keep)
+
 		else:
-			raise ValueError(f"Unsupported fitness metric: {config.qd.fitness}")
+			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
+			assert fitness.size == 1
+			fitness = jnp.squeeze(fitness)
+
+		if config.qd.secondary_fitness:
+			secondary_fitness = get_metric(observation, config.qd.secondary_fitness, config.qd.n_keep)
+			assert secondary_fitness.size == 1
+			secondary_fitness = jnp.squeeze(secondary_fitness)
+			fitness += config.qd.secondary_fitness_weight * secondary_fitness
+
+		failed = jnp.logical_or(observation.stats.is_empty.any(), observation.stats.is_full.any())
+		failed = jnp.logical_or(failed, observation.stats.is_spread.any())
+		fitness = jnp.where(failed, -jnp.inf, fitness)
+		return fitness
 
 	def descriptor_fn(observation, train_state, key):
 		descriptor_unsupervised = latent_mean(observation, train_state, key)
