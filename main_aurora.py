@@ -127,6 +127,8 @@ def main(config: DictConfig) -> None:
 			objectives = jnp.where(failed, -jnp.inf, objectives)
 			
 			return objectives
+		elif "_" in config.qd.fitness:  # Handle metric-based fitness
+			return get_metric(observation, config.qd.fitness, config.qd.n_keep)
 		else:
 			raise ValueError(f"Unsupported fitness metric: {config.qd.fitness}")
 

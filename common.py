@@ -7,42 +7,49 @@ from omegaconf import OmegaConf
 
 
 def get_metric(observation, metric, n_keep):
-	sign, *metric, operator = metric.split("_")
-	metric = "_".join(metric)
+    if not isinstance(metric, str) or "_" not in metric:
+        raise ValueError(f"Invalid metric format: {metric}. Expected format: 'sign_metric_operator'")
+    
+    parts = metric.split("_")
+    if len(parts) < 3:
+        raise ValueError(f"Invalid metric format: {metric}. Expected at least 3 parts (sign_metric_operator)")
+    
+    sign = parts[0]
+    operator = parts[-1]
+    metric_name = "_".join(parts[1:-1])
 
-	if operator == "avg":
-		operator = jnp.mean
-	elif operator == "var":
-		operator = jnp.var
-	elif operator == "max":
-		operator = jnp.max
-	else:
-		raise NotImplementedError
+    if operator == "avg":
+        operator = jnp.mean
+    elif operator == "var":
+        operator = jnp.var
+    elif operator == "max":
+        operator = jnp.max
+    else:
+        raise NotImplementedError(f"Unsupported operator: {operator}")
 
-	if sign == "pos":
-		sign = 1.
-	elif sign == "neg":
-		sign = -1.
-	else:
-		raise NotImplementedError
+    if sign == "pos":
+        sign = 1.
+    elif sign == "neg":
+        sign = -1.
+    else:
+        raise NotImplementedError(f"Unsupported sign: {sign}")
 
-	if metric == "mass":
-		return sign * operator(observation.stats.mass[-n_keep:], keepdims=True)
-	elif metric == "linear_velocity":  # equivalent to traveled distance from the origin
-		return sign * jnp.sqrt(jnp.square(observation.stats.center_x[-1:] - observation.stats.center_x[-n_keep]) + jnp.square(observation.stats.center_y[-1:] - observation.stats.center_y[-n_keep]))
-		# return sign * operator(observation.stats.linear_velocity[-n_keep:], keepdims=True)
-	elif metric == "angular_velocity":
-		return sign * operator(observation.stats.angular_velocity[-n_keep:], keepdims=True)
-	elif metric == "angle":
-		return sign * operator(observation.stats.angle[-n_keep:], keepdims=True)
-	elif metric == "center_x":
-		return sign * operator(observation.stats.center_x[-n_keep:], keepdims=True)
-	elif metric == "center_y":
-		return sign * operator(observation.stats.center_y[-n_keep:], keepdims=True)
-	elif metric == "color":
-		return sign * operator(observation.phenotype[-n_keep:, ...], axis=(0, 1, 2))
-	else:
-		raise NotImplementedError
+    if metric_name == "mass":
+        return sign * operator(observation.stats.mass[-n_keep:], keepdims=True)
+    elif metric_name == "linear_velocity":  # equivalent to traveled distance from the origin
+        return sign * jnp.sqrt(jnp.square(observation.stats.center_x[-1:] - observation.stats.center_x[-n_keep]) + jnp.square(observation.stats.center_y[-1:] - observation.stats.center_y[-n_keep]))
+    elif metric_name == "angular_velocity":
+        return sign * operator(observation.stats.angular_velocity[-n_keep:], keepdims=True)
+    elif metric_name == "angle":
+        return sign * operator(observation.stats.angle[-n_keep:], keepdims=True)
+    elif metric_name == "center_x":
+        return sign * operator(observation.stats.center_x[-n_keep:], keepdims=True)
+    elif metric_name == "center_y":
+        return sign * operator(observation.stats.center_y[-n_keep:], keepdims=True)
+    elif metric_name == "color":
+        return sign * operator(observation.phenotype[-n_keep:, ...], axis=(0, 1, 2))
+    else:
+        raise NotImplementedError
 
 
 def get_config(run_dir):
