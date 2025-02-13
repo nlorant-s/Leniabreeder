@@ -32,7 +32,7 @@ def main(config: DictConfig) -> None:
 
 	# Lenia
 	logging.info("Initializing Lenia...")
-	logging.info(f"Fitness: {config.qd.fitness}")
+	logging.info(f"Fitness: {config['qd']['fitness']}")
 	config_lenia = ConfigLenia(
 		# Init pattern
 		pattern_id=config.pattern_id,
@@ -128,7 +128,10 @@ def main(config: DictConfig) -> None:
 			objectives = jnp.where(failed, -jnp.inf, objectives)
 			
 			return objectives
-
+		elif "_" not in config.qd.fitness:
+			# Fallback for any single-word fitness that doesn't match 'unsupervised'
+			# Returns a valid scalar instead of calling get_metric
+			fitness = jnp.zeros(())
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
