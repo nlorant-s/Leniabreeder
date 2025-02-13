@@ -84,31 +84,48 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
 
-	def unsupervised(observation, train_state, key):
-		h = latent_variance(observation, train_state, key)
-		n = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
-		s = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
+	@partial(jax.jit, static_argnames=())
+	def novelty(observation, train_state, key):
+		# Get latent representation of current solution
+		latent = latent_mean(observation, train_state, key)
+		
+		# Calculate distance to archive of latent vectors
+		# For now using simple mean distance to other solutions
+		repertoire_latents = vae.apply(
+			train_state.params, 
+			observation.phenotype.reshape(-1, *observation.phenotype.shape[-3:]), 
+			key, 
+			method=vae.encode
+		)
+		repertoire_mean = jnp.mean(repertoire_latents, axis=0)
+		
+		novelty = jnp.linalg.norm(latent - repertoire_mean, axis=-1)
+		return novelty
 
-		return h + n + s
+	def sparsity(observation, train_state, key):
+		latent = latent_mean(observation, train_state, key)
+		sparsity = jnp.linalg.norm(latent, axis=-1)
+		return sparsity
 
+	@partial(jax.jit, static_argnames=())
 	def fitness_fn(observation, train_state, key):
-		if config.qd.fitness == "unsupervised":
-			fitness = latent_variance(observation, train_state, key)
-		else:
-			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
-			assert fitness.size == 1
-			fitness = jnp.squeeze(fitness)
-
-		if config.qd.secondary_fitness:
-			secondary_fitness = get_metric(observation, config.qd.secondary_fitness, config.qd.n_keep)
-			assert secondary_fitness.size == 1
-			secondary_fitness = jnp.squeeze(secondary_fitness)
-			fitness += config.qd.secondary_fitness_weight * secondary_fitness
-
+		# Calculate objectives
+		novelty_score = novelty(observation, train_state, key)
+		sparsity_score = sparsity(observation, train_state, key)
+		
+		assert novelty_score.shape == sparsity_score.shape, "Objective shapes must match"
+		
+		# Stack objectives with shape (n_objectives,)
+		objectives = jnp.stack([novelty_score, sparsity_score])
+		
+		# Check for failed simulations
 		failed = jnp.logical_or(observation.stats.is_empty.any(), observation.stats.is_full.any())
 		failed = jnp.logical_or(failed, observation.stats.is_spread.any())
-		fitness = jnp.where(failed, -jnp.inf, fitness)
-		return fitness
+		
+		# Set failed solutions to -inf
+		objectives = jnp.where(failed, -jnp.inf, objectives)
+		
+		return objectives
 
 	def descriptor_fn(observation, train_state, key):
 		descriptor_unsupervised = latent_mean(observation, train_state, key)
@@ -124,16 +141,106 @@ def main(config: DictConfig) -> None:
 		accum = jax.tree.map(lambda x: x[-config.qd.n_keep_ae:], accum)
 		return fitness, descriptor, accum
 
+	@partial(jax.jit, static_argnames=())
+	def fast_non_dominated_sorting(objectives):
+		population_size = objectives.shape[0]
+		
+		def dominates(x, y):
+			# Improved dominance check with explicit broadcasting
+			return jnp.logical_and(
+				jnp.all(x >= y),
+				jnp.any(x > y)
+			)
+		
+		# Vectorized domination comparison with improved stability
+		domination_matrix = jax.vmap(
+			lambda x: jax.vmap(lambda y: dominates(x, y))(objectives)
+		)(objectives)
+		
+		# Calculate domination counts and ranks with better numerical stability
+		domination_counts = jnp.sum(domination_matrix, axis=1)
+		ranks = jnp.where(
+			domination_counts == 0,
+			0.,
+			jnp.full_like(domination_counts, jnp.inf, dtype=jnp.float32)
+		)
+		
+		def calculate_crowding_distance():
+			n_objectives = objectives.shape[1]
+			distances = jnp.zeros(population_size, dtype=jnp.float32)
+			
+			def handle_objective(i, dist):
+				# Sort by objective i with stable sort
+				sorted_idx = jnp.argsort(objectives[:, i], kind='stable')
+				sorted_obj = objectives[sorted_idx, i]
+				
+				# Calculate normalized distances with epsilon to prevent division by zero
+				obj_range = jnp.maximum(sorted_obj[-1] - sorted_obj[0], 1e-10)
+				normalized_dists = (sorted_obj[2:] - sorted_obj[:-2]) / obj_range
+				
+				# Update distances array with safe indexing
+				return dist.at[sorted_idx[1:-1]].add(normalized_dists)
+			
+			# Calculate distances for each objective using fori_loop
+			distances = jax.lax.fori_loop(
+				0, n_objectives,
+				lambda i, dist: handle_objective(i, dist),
+				distances
+			)
+			return distances
+		
+		crowding_distances = calculate_crowding_distance()
+		
+		# Combine rank and crowding distance with improved numerical stability
+		scalar_fitness = -(ranks + 1e-6) + (crowding_distances / (1.0 + ranks + 1e-6))
+		
+		return scalar_fitness
+
 	def scoring_fn(genotypes, train_state, key):
 		batch_size = jax.tree.leaves(genotypes)[0].shape[0]
 		key, *keys = jax.random.split(key, batch_size+1)
-		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(genotypes, train_state, jnp.array(keys))
-
-		fitnesses_nan = jnp.isnan(fitnesses)
-		descriptors_nan = jnp.any(jnp.isnan(descriptors), axis=-1)
-		fitnesses = jnp.where(fitnesses_nan | descriptors_nan, -jnp.inf, fitnesses)
-
-		return fitnesses, descriptors, {"observations": observations}, key
+		
+		# Get multi-objective fitness scores and descriptors
+		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(
+			genotypes, train_state, jnp.array(keys))
+		
+		# Handle invalid solutions first with improved checking
+		invalid_mask = jnp.logical_or(
+			jnp.any(jnp.isnan(fitnesses), axis=-1),
+			jnp.any(jnp.isnan(descriptors), axis=-1)
+		)
+		invalid_mask = jnp.logical_or(
+			invalid_mask,
+			jnp.any(jnp.isneginf(fitnesses), axis=-1)
+		)
+		
+		# Normalize only valid solutions with safe operations
+		valid_mask = ~invalid_mask
+		valid_fitnesses = jnp.where(
+			valid_mask[:, None],
+			fitnesses,
+			jnp.full_like(fitnesses, -jnp.inf)
+		)
+		
+		# Compute normalization factors only on valid solutions
+		if jnp.any(valid_mask):
+			fitness_min = jnp.min(valid_fitnesses, where=valid_mask[:, None], initial=jnp.inf)
+			fitness_max = jnp.max(valid_fitnesses, where=valid_mask[:, None], initial=-jnp.inf)
+			normalized_fitnesses = jnp.where(
+				valid_mask[:, None],
+				(fitnesses - fitness_min) / (jnp.maximum(fitness_max - fitness_min, 1e-10)),
+				fitnesses
+			)
+		else:
+			normalized_fitnesses = fitnesses
+		
+		# Apply non-dominated sorting
+		scalar_fitness = fast_non_dominated_sorting(normalized_fitnesses)
+		
+		# Ensure invalid solutions get -inf fitness
+		scalar_fitness = jnp.where(invalid_mask, -jnp.inf, scalar_fitness)
+		
+		return scalar_fitness, descriptors, {"observations": observations}, key
 
 	# Define a metrics function
 	metrics_fn = partial(default_qd_metrics, qd_offset=0.)
