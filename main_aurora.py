@@ -93,7 +93,7 @@ def main(config: DictConfig) -> None:
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
-			fitness = latent_variance(observation, train_state, key)
+			fitness = unsupervised(observation, train_state, key)
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
