@@ -95,19 +95,18 @@ def default_qd_metrics(repertoire: MapElitesRepertoire, qd_offset: float) -> Met
     coverage = jnp.mean(1.0 - repertoire_empty)
     max_fitness = jnp.max(repertoire.fitnesses)
 
-    # Calculate unique cells metric - handle as array operation
-    valid_mask = ~repertoire_empty
-    # Use where to avoid nan/inf values
-    valid_descriptors = jnp.where(
-        valid_mask[..., None],
+    # Calculate unique cells using broadcasted operations
+    valid_mask = ~repertoire_empty[..., None]  # Add dimension for broadcasting
+    padded_descriptors = jnp.where(
+        valid_mask, 
         repertoire.descriptors,
         jnp.zeros_like(repertoire.descriptors)
     )
-    # Round descriptors to handle floating point precision
-    rounded_descriptors = jnp.round(valid_descriptors, decimals=3)
-    # Count unique rows considering only valid entries
-    unique_mask = jnp.any(rounded_descriptors != 0, axis=-1)
-    unique_cells = jnp.sum(unique_mask)
+    rounded_descriptors = jnp.round(padded_descriptors, decimals=3)
+    
+    # Count unique valid descriptors
+    descriptor_hash = jnp.sum(rounded_descriptors * jnp.array([1., 10., 100.]), axis=-1)
+    unique_cells = jnp.sum(jnp.unique(descriptor_hash * valid_mask.astype(jnp.float32)) != 0)
 
     return {"qd_score": qd_score, "max_fitness": max_fitness, "coverage": coverage, "unique_cells": unique_cells}
 
