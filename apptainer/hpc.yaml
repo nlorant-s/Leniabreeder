@@ -8,7 +8,7 @@ kwargs: null  # -q express -P exp-00097
 
 args:
   # # AURORA
-  - "seed=\$RANDOM qd=aurora qd.n_generations=4000 qd.repertoire_size=2048 qd.fitness=unsupervised"
+  - "seed=\$RANDOM qd=aurora qd.n_generations=4000 qd.repertoire_size=2048 qd.fitness=neg_mass_var"
   # - "seed=\$RANDOM qd=aurora qd.n_generations=4000 qd.repertoire_size=2048 qd.fitness=neg_mass_avg"
   # - "seed=\$RANDOM qd=aurora qd.n_generations=4000 qd.repertoire_size=2048 qd.fitness=pos_linear_velocity_avg"
   # - "seed=\$RANDOM qd=aurora qd.n_generations=4000 qd.repertoire_size=2048 qd.fitness=neg_angle_var"
