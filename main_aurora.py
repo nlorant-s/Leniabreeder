@@ -93,28 +93,7 @@ def main(config: DictConfig) -> None:
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
-			# Create empty jnp array
-			batch_fitnesses = jnp.zeros((config.qd.batch_size,))
-			batch_phenotypes = jnp.zeros((config.qd.batch_size, config.phenotype_size, config.phenotype_size, lenia.n_channel))
-			current_index = jnp.array(0)
-
-			def scan_fitness(carry, _):
-				batch_fitnesses, batch_phenotypes, current_index = carry
-				# Pass the *observation* to batch_fitness, not the fitness_fn
-				fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
-				batch_fitnesses = jax.ops.index_update(batch_fitnesses, current_index, fitness)
-				batch_phenotypes = jax.ops.index_update(batch_phenotypes, jax.ops.index[current_index], observation.phenotype[-1])
-				current_index += 1
-				return (batch_fitnesses, batch_phenotypes, current_index), None
-
-			(batch_fitnesses, batch_phenotypes, current_index), _ = jax.lax.scan(
-				scan_fitness,
-				(batch_fitnesses, batch_phenotypes, current_index),
-				jnp.arange(config.qd.batch_size)
-			)
-
-			pareto_rank = unsupervised(batch_fitnesses)
-			return pareto_rank
+			fitness = latent_variance(observation, train_state, key)
 		else:
 			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 			assert fitness.size == 1
