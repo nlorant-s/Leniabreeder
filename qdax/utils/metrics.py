@@ -95,19 +95,29 @@ def default_qd_metrics(repertoire: MapElitesRepertoire, qd_offset: float) -> Met
     coverage = jnp.mean(1.0 - repertoire_empty)
     max_fitness = jnp.max(repertoire.fitnesses)
 
-    # Calculate unique cells using broadcasted operations
-    valid_mask = ~repertoire_empty[..., None]  # Add dimension for broadcasting
-    padded_descriptors = jnp.where(
-        valid_mask, 
-        repertoire.descriptors,
-        jnp.zeros_like(repertoire.descriptors)
-    )
-    rounded_descriptors = jnp.round(padded_descriptors, decimals=3)
+    # Calculate unique cells using static shapes and jit-compatible operations
+    valid_mask = ~repertoire_empty
     
-    # Count unique valid descriptors
-    descriptor_hash = jnp.sum(rounded_descriptors * jnp.array([1., 10., 100.]), axis=-1)
-    unique_cells = jnp.sum(jnp.unique(descriptor_hash * valid_mask.astype(jnp.float32)) != 0)
-
+    # Create stable hash values for each descriptor using static shapes
+    descriptor_dim = repertoire.descriptors.shape[-1]
+    scaling_factors = jnp.power(10.0, jnp.arange(descriptor_dim))
+    
+    # Handle valid descriptors with broadcasting
+    rounded_descriptors = jnp.round(repertoire.descriptors, decimals=3)
+    masked_descriptors = jnp.where(
+        valid_mask[..., None],  # Add dimension for broadcasting
+        rounded_descriptors,
+        jnp.zeros_like(rounded_descriptors)
+    )
+    
+    # Create unique hash for each descriptor
+    descriptor_hash = jnp.sum(masked_descriptors * scaling_factors, axis=-1)
+    
+    # Count unique valid cells (non-zero hashes)
+    unique_cells = jnp.sum(
+        jnp.unique(descriptor_hash, size=descriptor_hash.shape[0]) != 0
+    )
+    
     return {"qd_score": qd_score, "max_fitness": max_fitness, "coverage": coverage, "unique_cells": unique_cells}
 
 
