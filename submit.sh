@@ -1,4 +1,3 @@
-
 #!/bin/bash
 #SBATCH --job-name=leniabreeder
 #SBATCH --output=leniabreeder_%A_%a.out
