@@ -1,48 +1,32 @@
 Bootstrap: docker
-From: ubuntu:22.04
+From: continuumio/miniconda3:latest
 
-%help
-	Leniabreeder: Toward Artificial Open-Ended Evolution within Lenia using Quality-Diversity
+%files
+    requirements.txt /requirements.txt
 
 %environment
-	# System
-	export TZ=Europe/London
-	export OPENBLAS_NUM_THREADS=1
-
-	# Activate virtual environment permanently
-	export VIRTUAL_ENV="/venv"
-	export _OLD_VIRTUAL_PATH="$PATH"
-	export PATH="$VIRTUAL_ENV/bin:$PATH"
-
-	# Add /workspace/src/ to PYTHONPATH
-	export PYTHONPATH="/workspace/src"
+    export TZ=Europe/London
+    export OPENBLAS_NUM_THREADS=1
+    export PATH="/opt/conda/bin:$PATH"
+    export PYTHONPATH="/workspace/src"
 
 %post
-	export DEBIAN_FRONTEND=noninteractive
+    # Install conda packages
+    conda install -y -c conda-forge \
+        python=3.11 \
+        pip \
+        git \
+        ffmpeg \
+        jax \
+        cuda-toolkit=12.4
 
-	# Export environment variables permanently
-	echo "export WANDB_API_KEY=$WANDB_API_KEY" >> $APPTAINER_ENVIRONMENT
+    # Install pip requirements
+    pip install --no-cache-dir -r /requirements.txt
 
-	# Update and install required libraries
-	apt update
-	apt install -y wget git software-properties-common ffmpeg
-
-	# Install Python
-	add-apt-repository ppa:deadsnakes/ppa
-	apt install -y python3.11 python3.11-venv
-
-	# Create a virtual environment
-	python3.11 -m venv /venv
-	. /venv/bin/activate
-	python -m ensurepip
-	pip install --upgrade pip
-
-	# Clone repository to /src/
-	git clone https://github.com/maxencefaldor/Leniabreeder.git /src/ && cd /src/
-
-	# Install requirements
-	pip install -r requirements.txt
+    # Clone repository 
+    mkdir -p /workspace
+    cd /workspace
+    git clone https://github.com/nlorant-s/Leniabreeder.git src
 
 %runscript
-	# Run main
-	python /src/main.py "$@"
+    python /workspace/src/main_aurora.py "$@"
