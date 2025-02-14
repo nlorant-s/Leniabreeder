@@ -84,48 +84,12 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-2)
 
-	def unsupervised(fitnesses):
-		"""Calculates Pareto rankings based on pre-calculated fitness scores."""
-		objectives = jnp.stack(fitnesses, axis=-1)  # Shape: (batch_size, 3)
+	def unsupervised(observation, train_state, key):
+		homeostasis = latent_variance(observation, train_state, key)
+		novelty = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
+		sparsity = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
 
-		# Compute Pareto rankings
-		pareto_rank = jnp.zeros(objectives.shape[0], dtype=jnp.int32)
-		for i in range(objectives.shape[0]):
-			for j in range(objectives.shape[0]):
-				if i == j:
-					continue
-				if jnp.all(objectives[i] <= objectives[j]) and jnp.any(objectives[i] < objectives[j]):
-					pareto_rank = jax.ops.index_add(pareto_rank, i, 1)
-
-		return pareto_rank
-
-	def unsupervised(fitnesses):
-		"""Calculates Pareto rankings based on pre-calculated fitness scores."""
-		objectives = jnp.stack(fitnesses, axis=-1)  # Shape: (batch_size, 3)
-
-		# Compute Pareto rankings
-		pareto_rank = jnp.zeros(objectives.shape[0], dtype=jnp.int32)
-		for i in range(objectives.shape[0]):
-			for j in range(objectives.shape[0]):
-				if i == j:
-					continue
-				if jnp.all(objectives[i] <= objectives[j]) and jnp.any(objectives[i] < objectives[j]):
-					pareto_rank = jax.ops.index_add(pareto_rank, i, 1)
-
-		return pareto_rank
-
-	def batch_fitness(observation, train_state, key, batch_fitnesses=None, batch_phenotypes=None, current_index=None):
-		"""Calculates and stores fitness scores for a batch of individuals."""
-		# Calculate fitness for the individual observation
-		if config.qd.fitness == "unsupervised":
-			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep) # Or whatever metric you are using
-		else:
-			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
-
-		batch_fitnesses = jax.ops.index_update(batch_fitnesses, current_index, fitness)
-		batch_phenotypes = jax.ops.index_update(batch_phenotypes, jax.ops.index[current_index], observation.phenotype[-1])
-
-		return batch_fitnesses, batch_phenotypes
+		return homeostasis + novelty + sparsity
 
 	def fitness_fn(observation, train_state, key):
 		if config.qd.fitness == "unsupervised":
