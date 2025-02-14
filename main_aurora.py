@@ -92,22 +92,22 @@ def main(config: DictConfig) -> None:
 		return homeostasis + novelty + sparsity
 
 	def fitness_fn(observation, train_state, key):
-		if config.qd.fitness == "unsupervised":
-			fitness = latent_variance(observation, train_state, key)
-		else:
-			fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
-			assert fitness.size == 1
-			fitness = jnp.squeeze(fitness)
+		# if config.qd.fitness == "unsupervised":
+		fitness = latent_variance(observation, train_state, key)
+		# else:
+		# 	fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
+		# 	assert fitness.size == 1
+		# 	fitness = jnp.squeeze(fitness)
 
-		if config.qd.secondary_fitness:
-			secondary_fitness = get_metric(observation, config.qd.secondary_fitness, config.qd.n_keep)
-			assert secondary_fitness.size == 1
-			secondary_fitness = jnp.squeeze(secondary_fitness)
-			fitness += config.qd.secondary_fitness_weight * secondary_fitness
+		# if config.qd.secondary_fitness:
+		# 	secondary_fitness = get_metric(observation, config.qd.secondary_fitness, config.qd.n_keep)
+		# 	assert secondary_fitness.size == 1
+		# 	secondary_fitness = jnp.squeeze(secondary_fitness)
+		# 	fitness += config.qd.secondary_fitness_weight * secondary_fitness
 
-		failed = jnp.logical_or(observation.stats.is_empty.any(), observation.stats.is_full.any())
-		failed = jnp.logical_or(failed, observation.stats.is_spread.any())
-		fitness = jnp.where(failed, -jnp.inf, fitness)
+		# failed = jnp.logical_or(observation.stats.is_empty.any(), observation.stats.is_full.any())
+		# failed = jnp.logical_or(failed, observation.stats.is_spread.any())
+		# fitness = jnp.where(failed, -jnp.inf, fitness)
 		return fitness
 
 	def descriptor_fn(observation, train_state, key):
@@ -248,7 +248,7 @@ def main(config: DictConfig) -> None:
 		key,
 	)
 
-	metrics = dict.fromkeys(["generation", "qd_score", "coverage", "max_fitness", "loss", "recon_loss", "kld_loss", "learning_rate", "n_elites", "variance", "time"], jnp.array([]))
+	metrics = dict.fromkeys(["generation", "qd_score", "coverage", "max_fitness", "loss", "recon_loss", "kld_loss", "learning_rate", "n_elites", "variance", "time", "unique_cells"], jnp.array([]))
 	csv_logger = CSVLogger("./log.csv", header=list(metrics.keys()))
 
 	# Main loop

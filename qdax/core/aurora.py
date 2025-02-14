@@ -192,4 +192,11 @@ class AURORA:
 		metrics = self._metrics_fn(repertoire)
 		metrics["is_offspring_added"] = is_offspring_added
 
+		# Added unique cells metric
+		valid_mask = repertoire.fitnesses != -jnp.inf
+		valid_descriptors = repertoire.descriptors[valid_mask]
+		rounded_descriptors = jnp.round(valid_descriptors, decimals=3)
+		unique_cells = jnp.unique(rounded_descriptors, axis=0).shape[0]
+		metrics["unique_cells"] = unique_cells
+
 		return repertoire, emitter_state, metrics, random_key
