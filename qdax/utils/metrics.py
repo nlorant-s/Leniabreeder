@@ -95,7 +95,13 @@ def default_qd_metrics(repertoire: MapElitesRepertoire, qd_offset: float) -> Met
     coverage = jnp.mean(1.0 - repertoire_empty)
     max_fitness = jnp.max(repertoire.fitnesses)
 
-    return {"qd_score": qd_score, "max_fitness": max_fitness, "coverage": coverage}
+    # Calculate unique cells in descriptor space
+    valid_descriptors = repertoire.descriptors[~repertoire_empty]
+    rounded_descriptors = jnp.round(valid_descriptors, decimals=3)
+    unique_cells = jnp.unique(rounded_descriptors, axis=0).shape[0]
+
+
+    return {"qd_score": qd_score, "max_fitness": max_fitness, "coverage": coverage, "unique_cells": unique_cells}
 
 
 def default_moqd_metrics(
