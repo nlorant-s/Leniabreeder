@@ -91,9 +91,56 @@ def main(config: DictConfig) -> None:
 
 		return homeostasis + novelty + sparsity
 
-	def fitness_fn(observation, train_state, key):
+	def compute_domination_count(objectives, archive_objectives):
+		"""Count how many archive solutions dominate this solution"""
+		# A solution dominates another if it's better in at least one objective
+		# and not worse in all others
+		dominates = jnp.all(archive_objectives >= objectives, axis=1) & \
+					jnp.any(archive_objectives > objectives, axis=1)
+		return jnp.sum(dominates)
+
+	def pareto_fitness(observation, train_state, key, repertoire):
+		"""Calculate fitness using Pareto-based comparison against archive"""
+		# Calculate individual objectives
+		if repertoire is None or repertoire.fitnesses.size == 0:
+			return 0.0
+		objectives = jnp.array([
+			latent_variance(observation, train_state, key),  # homeostasis
+			jnp.linalg.norm(  # novelty
+				latent_mean(observation, train_state, key) - 
+				latent_mean(observation, train_state, key).mean(axis=0), 
+				axis=-1
+			),
+			jnp.linalg.norm(  # sparsity
+				jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), 
+				axis=-1
+			)
+		])
+		
+		# Get archive objectives
+		archive_objectives = jnp.stack([
+			latent_variance(repertoire.observations, train_state, key),
+			jnp.linalg.norm(
+				latent_mean(repertoire.observations, train_state, key) - 
+				latent_mean(repertoire.observations, train_state, key).mean(axis=0), 
+				axis=-1
+			),
+			jnp.linalg.norm(
+				jnp.mean(repertoire.observations.phenotype[-config.qd.n_keep:], axis=0), 
+				axis=-1
+			)
+		])
+
+		# Calculate domination-based fitness
+		domination_count = compute_domination_count(objectives, archive_objectives)
+		
+		# Return negative domination count (fewer dominating solutions = better fitness)
+		return -domination_count
+
+	def fitness_fn(observation, train_state, key, repertoire):
 		# if config.qd.fitness == "unsupervised":
-		fitness = latent_variance(observation, train_state, key)
+		# fitness = latent_variance(observation, train_state, key)
+		fitness = pareto_fitness(observation, train_state, key, repertoire)
 		# else:
 		# 	fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 		# 	assert fitness.size == 1
@@ -114,20 +161,20 @@ def main(config: DictConfig) -> None:
 		descriptor_unsupervised = latent_mean(observation, train_state, key)
 		return descriptor_unsupervised
 
-	def evaluate(genotype, train_state, key):
+	def evaluate(genotype, train_state, key, repertoire):
 		carry = lenia.express_genotype(init_carry, genotype)
 		lenia_step = partial(lenia.step, phenotype_size=config.phenotype_size, center_phenotype=config.center_phenotype, record_phenotype=config.record_phenotype)
 		carry, accum = jax.lax.scan(lenia_step, init=carry, xs=jnp.arange(lenia._config.n_step))
 
-		fitness = fitness_fn(accum, train_state, key)
+		fitness = fitness_fn(accum, train_state, key, repertoire)
 		descriptor = descriptor_fn(accum, train_state, key)
 		accum = jax.tree.map(lambda x: x[-config.qd.n_keep_ae:], accum)
 		return fitness, descriptor, accum
 
-	def scoring_fn(genotypes, train_state, key):
+	def scoring_fn(genotypes, train_state, key, repertoire):
 		batch_size = jax.tree.leaves(genotypes)[0].shape[0]
 		key, *keys = jax.random.split(key, batch_size+1)
-		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(genotypes, train_state, jnp.array(keys))
+		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(genotypes, train_state, jnp.array(keys), repertoire)
 
 		fitnesses_nan = jnp.isnan(fitnesses)
 		descriptors_nan = jnp.any(jnp.isnan(descriptors), axis=-1)
