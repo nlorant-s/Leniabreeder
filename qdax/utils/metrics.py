@@ -94,9 +94,33 @@ def default_qd_metrics(repertoire: MapElitesRepertoire, qd_offset: float) -> Met
     qd_score += qd_offset * jnp.sum(1.0 - repertoire_empty)
     coverage = jnp.mean(1.0 - repertoire_empty)
     max_fitness = jnp.max(repertoire.fitnesses)
-    unique_cells = jnp.sum(~repertoire_empty)
+    unique_cells = jnp.sum(~repertoire_empty) # counts total number of non-empty cells in the repertoire
 
-    return {"qd_score": qd_score, "max_fitness": max_fitness, "coverage": coverage, "unique_cells": unique_cells}
+    # Simple open-endedness metrics
+    valid_mask = ~repertoire_empty
+    valid_descriptors = jnp.where(
+        valid_mask[:, None],
+        repertoire.descriptors,
+        jnp.zeros_like(repertoire.descriptors)
+    )
+    
+    # 1. Descriptor space spread - maximum distance between valid solutions
+    pairwise_distances = jnp.linalg.norm(
+        valid_descriptors[:, None, :] - valid_descriptors[None, :, :],
+        axis=-1
+    )
+    descriptor_spread = jnp.max(pairwise_distances * valid_mask[:, None])
+    
+    # 2. Density variation - standard deviation of distances to nearest neighbors
+    nearest_neighbor_dists = jnp.min(
+        jnp.where(pairwise_distances > 0, pairwise_distances, jnp.inf),
+        axis=-1
+    )
+    density_variation = jnp.std(
+        jnp.where(valid_mask, nearest_neighbor_dists, 0.0)
+    )
+
+    return {"qd_score": qd_score, "max_fitness": max_fitness, "coverage": coverage, "unique_cells": unique_cells, "descriptor_spread": descriptor_spread, "density_variation": density_variation}
 
 
 def default_moqd_metrics(
