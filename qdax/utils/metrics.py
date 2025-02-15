@@ -94,30 +94,8 @@ def default_qd_metrics(repertoire: MapElitesRepertoire, qd_offset: float) -> Met
     qd_score += qd_offset * jnp.sum(1.0 - repertoire_empty)
     coverage = jnp.mean(1.0 - repertoire_empty)
     max_fitness = jnp.max(repertoire.fitnesses)
+    unique_cells = jnp.sum(~repertoire_empty)
 
-    # Calculate unique cells using static shapes and jit-compatible operations
-    valid_mask = ~repertoire_empty
-    
-    # Create stable hash values for each descriptor using static shapes
-    descriptor_dim = repertoire.descriptors.shape[-1]
-    scaling_factors = jnp.power(10.0, jnp.arange(descriptor_dim))
-    
-    # Handle valid descriptors with broadcasting
-    rounded_descriptors = jnp.round(repertoire.descriptors, decimals=3)
-    masked_descriptors = jnp.where(
-        valid_mask[..., None],  # Add dimension for broadcasting
-        rounded_descriptors,
-        jnp.zeros_like(rounded_descriptors)
-    )
-    
-    # Create unique hash for each descriptor
-    descriptor_hash = jnp.sum(masked_descriptors * scaling_factors, axis=-1)
-    
-    # Count unique valid cells (non-zero hashes)
-    unique_cells = jnp.sum(
-        jnp.unique(descriptor_hash, size=descriptor_hash.shape[0]) != 0
-    )
-    
     return {"qd_score": qd_score, "max_fitness": max_fitness, "coverage": coverage, "unique_cells": unique_cells}
 
 
