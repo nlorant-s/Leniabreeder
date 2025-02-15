@@ -161,7 +161,7 @@ def main(config: DictConfig) -> None:
 		descriptor_unsupervised = latent_mean(observation, train_state, key)
 		return descriptor_unsupervised
 
-	def evaluate(genotype, train_state, key, repertoire):
+	def evaluate(genotype, train_state, key, repertoire=None):
 		carry = lenia.express_genotype(init_carry, genotype)
 		lenia_step = partial(lenia.step, phenotype_size=config.phenotype_size, center_phenotype=config.center_phenotype, record_phenotype=config.record_phenotype)
 		carry, accum = jax.lax.scan(lenia_step, init=carry, xs=jnp.arange(lenia._config.n_step))
@@ -171,10 +171,10 @@ def main(config: DictConfig) -> None:
 		accum = jax.tree.map(lambda x: x[-config.qd.n_keep_ae:], accum)
 		return fitness, descriptor, accum
 
-	def scoring_fn(genotypes, train_state, key, repertoire):
+	def scoring_fn(genotypes, train_state, key, repertoire=None):
 		batch_size = jax.tree.leaves(genotypes)[0].shape[0]
 		key, *keys = jax.random.split(key, batch_size+1)
-		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0))(genotypes, train_state, jnp.array(keys), repertoire)
+		fitnesses, descriptors, observations = jax.vmap(evaluate, in_axes=(0, None, 0, None))(genotypes, train_state, jnp.array(keys), repertoire)
 
 		fitnesses_nan = jnp.isnan(fitnesses)
 		descriptors_nan = jnp.any(jnp.isnan(descriptors), axis=-1)
@@ -276,7 +276,7 @@ def main(config: DictConfig) -> None:
 	# Init AURORA
 	aurora = AURORA(
 		emitter=mixing_emitter,
-		scoring_fn=scoring_fn,
+    	scoring_fn=lambda g, ts, k, r=None: scoring_fn(g, ts, k, r),  # Add default None
 		fitness_fn=fitness_fn,
 		descriptor_fn=descriptor_fn,
 		train_fn=train_fn,
