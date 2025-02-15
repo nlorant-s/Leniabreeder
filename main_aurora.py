@@ -248,7 +248,7 @@ def main(config: DictConfig) -> None:
 		key,
 	)
 
-	metrics = dict.fromkeys(["generation", "qd_score", "coverage", "max_fitness", "loss", "recon_loss", "kld_loss", "learning_rate", "n_elites", "variance", "time", "unique_cells", "descriptor_spread", "density_variation"], jnp.array([]))
+	metrics = dict.fromkeys(["generation", "qd_score", "coverage", "max_fitness", "loss", "recon_loss", "kld_loss", "learning_rate", "n_elites", "variance", "time"], jnp.array([]))
 	csv_logger = CSVLogger("./log.csv", header=list(metrics.keys()))
 
 	# Main loop
