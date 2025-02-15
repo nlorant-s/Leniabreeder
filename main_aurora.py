@@ -277,7 +277,7 @@ def main(config: DictConfig) -> None:
 	aurora = AURORA(
 		emitter=mixing_emitter,
     	scoring_fn=lambda g, ts, k, r=None: scoring_fn(g, ts, k, r),  # Add default None
-		fitness_fn=fitness_fn,
+    	fitness_fn=lambda o, ts, k, r=None: fitness_fn(o, ts, k, r),  # Add repertoire parameter
 		descriptor_fn=descriptor_fn,
 		train_fn=train_fn,
 		metrics_fn=metrics_fn,

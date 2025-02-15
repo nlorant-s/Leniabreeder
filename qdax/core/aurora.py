@@ -65,7 +65,7 @@ class AURORA:
 
 		# New fitnesses
 		keys = jax.random.split(key, repertoire.size)
-		new_fitnesses = jax.vmap(self._fitness_fn, in_axes=(0, None, 0))(repertoire.observations, train_state, keys)
+		new_fitnesses = jax.vmap(self._fitness_fn, in_axes=(0, None, 0, None))(repertoire.observations, train_state, keys)
 		new_fitnesses = jnp.where(repertoire.fitnesses == -jnp.inf, -jnp.inf, new_fitnesses)
 
 		# New descriptors
