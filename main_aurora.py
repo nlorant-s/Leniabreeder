@@ -118,7 +118,7 @@ def main(config: DictConfig) -> None:
 		"""Calculate fitness using Pareto-based comparison against archive"""
 		# Calculate individual objectives
 		if repertoire is None or repertoire.fitnesses.size == 0:
-			return 0.0
+			return latent_variance(observation, train_state, key)
 		
 		latent_mean = latent_mean(observation, train_state, key)
 
@@ -155,10 +155,10 @@ def main(config: DictConfig) -> None:
 		# Return negative domination count (fewer dominating solutions = better fitness)
 		return -domination_count
 
-	def fitness_fn(observation, train_state, key, repertoire):
+	def fitness_fn(observation, train_state, key, repertoire=None):
 		# if config.qd.fitness == "unsupervised":
-		fitness = latent_variance(observation, train_state, key)
-		# fitness = pareto_fitness(observation, train_state, key, repertoire)
+		# fitness = latent_variance(observation, train_state, key)
+		fitness = pareto_fitness(observation, train_state, key, repertoire)
 		# else:
 		# 	fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 		# 	assert fitness.size == 1
