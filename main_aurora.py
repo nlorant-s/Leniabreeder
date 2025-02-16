@@ -170,9 +170,9 @@ def main(config: DictConfig) -> None:
 		# 	secondary_fitness = jnp.squeeze(secondary_fitness)
 		# 	fitness += config.qd.secondary_fitness_weight * secondary_fitness
 
-		# failed = jnp.logical_or(observation.stats.is_empty.any(), observation.stats.is_full.any())
-		# failed = jnp.logical_or(failed, observation.stats.is_spread.any())
-		# fitness = jnp.where(failed, -jnp.inf, fitness)
+		failed = jnp.logical_or(observation.stats.is_empty.any(), observation.stats.is_full.any())
+		failed = jnp.logical_or(failed, observation.stats.is_spread.any())
+		fitness = jnp.where(failed, -jnp.inf, fitness)
 		return fitness
 
 	def descriptor_fn(observation, train_state, key):
@@ -294,8 +294,8 @@ def main(config: DictConfig) -> None:
 	# Init AURORA
 	aurora = AURORA(
 		emitter=mixing_emitter,
-    	scoring_fn=lambda g, ts, k, r=None: scoring_fn(g, ts, k, r),  # Add default None
-    	fitness_fn=lambda o, ts, k, r=None: fitness_fn(o, ts, k, r),  # Add repertoire parameter
+    	scoring_fn=scoring_fn,
+    	fitness_fn=fitness_fn,
 		descriptor_fn=descriptor_fn,
 		train_fn=train_fn,
 		metrics_fn=metrics_fn,
