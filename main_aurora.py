@@ -119,11 +119,14 @@ def main(config: DictConfig) -> None:
 		# Calculate individual objectives
 		if repertoire is None or repertoire.fitnesses.size == 0:
 			return 0.0
+		
+		latent_mean = latent_mean(observation, train_state, key)
+
 		objectives = jnp.array([
 			latent_variance(observation, train_state, key),  # homeostasis
 			jnp.linalg.norm(  # novelty
-				latent_mean(observation, train_state, key) - 
-				latent_mean(observation, train_state, key).mean(axis=0), 
+				latent_mean - 
+				latent_mean.mean(axis=0), 
 				axis=-1
 			),
 			compute_sparsity(  # sparsity in descriptor space
