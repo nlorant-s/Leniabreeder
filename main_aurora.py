@@ -84,13 +84,6 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
 
-	def unsupervised(observation, train_state, key):
-		homeostasis = latent_variance(observation, train_state, key)
-		novelty = jnp.linalg.norm(latent_mean(observation, train_state, key) - latent_mean(observation, train_state, key).mean(axis=0), axis=-1)
-		sparsity = jnp.linalg.norm(jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), axis=-1)
-
-		return homeostasis + novelty + sparsity
-
 	def compute_domination_count(objectives, archive_objectives):
 		"""Count how many archive solutions dominate this solution"""
 		# A solution dominates another if it's better in at least one objective
@@ -133,9 +126,9 @@ def main(config: DictConfig) -> None:
 				latent_mean(observation, train_state, key).mean(axis=0), 
 				axis=-1
 			),
-			jnp.linalg.norm(  # sparsity
-				jnp.mean(observation.phenotype[-config.qd.n_keep:], axis=0), 
-				axis=-1
+			compute_sparsity(  # sparsity in descriptor space
+				descriptor_fn(observation, train_state, key),
+				descriptor_fn(repertoire.observations, train_state, key)
 			)
 		])
 		
