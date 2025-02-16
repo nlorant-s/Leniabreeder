@@ -98,6 +98,28 @@ def main(config: DictConfig) -> None:
 		dominates = jnp.all(archive_objectives >= objectives, axis=1) & \
 					jnp.any(archive_objectives > objectives, axis=1)
 		return jnp.sum(dominates)
+	
+	def compute_sparsity(descriptors, archive_descriptors, sigma=0.5):
+		"""
+		Compute sparsity score based on distance to archive solutions in descriptor space.
+		Higher score = more sparse/novel area of descriptor space.
+		
+		Args:
+			descriptors: Descriptors of current solution 
+			archive_descriptors: Descriptors of solutions in archive
+			sigma: Kernel width for density estimation
+		"""
+		# Compute distances to all archive solutions
+		distances = jnp.linalg.norm(
+			descriptors[:, None] - archive_descriptors[None, :], 
+			axis=-1
+		)
+		
+		# Convert distances to density estimate using RBF kernel
+		density = jnp.sum(jnp.exp(-distances**2 / (2 * sigma**2)), axis=-1)
+		
+		# Return negative density (higher = more sparse)
+		return -density
 
 	def pareto_fitness(observation, train_state, key, repertoire):
 		"""Calculate fitness using Pareto-based comparison against archive"""
@@ -125,9 +147,9 @@ def main(config: DictConfig) -> None:
 				latent_mean(repertoire.observations, train_state, key).mean(axis=0), 
 				axis=-1
 			),
-			jnp.linalg.norm(
-				jnp.mean(repertoire.observations.phenotype[-config.qd.n_keep:], axis=0), 
-				axis=-1
+			compute_sparsity(  # sparsity in descriptor space
+				descriptor_fn(observation, train_state, key),
+				descriptor_fn(repertoire.observations, train_state, key)
 			)
 		])
 
@@ -139,8 +161,8 @@ def main(config: DictConfig) -> None:
 
 	def fitness_fn(observation, train_state, key, repertoire):
 		# if config.qd.fitness == "unsupervised":
-		fitness = latent_variance(observation, train_state, key)
-		# fitness = pareto_fitness(observation, train_state, key, repertoire)
+		# fitness = latent_variance(observation, train_state, key)
+		fitness = pareto_fitness(observation, train_state, key, repertoire)
 		# else:
 		# 	fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 		# 	assert fitness.size == 1
