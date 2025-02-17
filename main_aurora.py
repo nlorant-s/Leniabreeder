@@ -291,11 +291,15 @@ def main(config: DictConfig) -> None:
 		)
 		return train_state, metrics
 
+	def fitness_fn_wrapper(obs, ts, key):
+		"""Wrapper to make fitness function signature consistent for AURORA"""
+		return fitness_fn(obs, ts, key, None)
+
 	# Init AURORA
 	aurora = AURORA(
 		emitter=mixing_emitter,
     	scoring_fn=scoring_fn,
-    	fitness_fn=fitness_fn,
+    	fitness_fn=fitness_fn_wrapper,
 		descriptor_fn=descriptor_fn,
 		train_fn=train_fn,
 		metrics_fn=metrics_fn,
