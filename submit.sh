@@ -21,7 +21,7 @@ export PYTHONPATH="${PYTHONPATH}:${PWD}"
 # Create working directory and copy configs
 WORKDIR="run_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p ${WORKDIR}
-cp -r configs ${WORKDIR}/
+cp -r configs ${WORKDIR}/configs
 cd ${WORKDIR}
 
 # Build container with conda base
@@ -34,9 +34,7 @@ cd ../${WORKDIR}
 apptainer run --nv \
     --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
     --bind ${PWD}:/workspace/run \
-    --bind ${PWD}:/workspace/leniabreeder \
-    ../leniabreeder.sif \
-    python /workspace/leniabreeder/main_aurora.py --config-dir=/workspace/leniabreeder/configs --config-name=aurora
+    python /workspace/run/main_aurora.py --config-dir=/workspace/run/configs --config-name=aurora
 
 # Copy results if needed
 mkdir -p ../results/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
