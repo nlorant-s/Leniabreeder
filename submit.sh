@@ -2,7 +2,7 @@
 #SBATCH --job-name=leniabreeder
 #SBATCH --output=leniabreeder_%A_%a.out
 #SBATCH --error=leniabreeder_%A_%a.err
-#SBATCH --time=04:30:00
+#SBATCH --time=07:29:00
 #SBATCH --partition=gpu-a100-q
 #SBATCH --gres=gpu:a100:1
 #SBATCH --cpus-per-task=4
