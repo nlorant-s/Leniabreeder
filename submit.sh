@@ -33,10 +33,9 @@ cd ../${WORKDIR}
 apptainer run --nv \
     --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
     --bind ${PWD}:/workspace/run \
-    --bind ${PWD}:/workspace/leniabreeder \
+    --bind ${PWD}/configs:/workspace/leniabreeder/configs \
     ../leniabreeder.sif \
-    python /workspace/leniabreeder/main.py \
-    --config-dir /workspace/leniabreeder/configs
+    python /workspace/leniabreeder/main_aurora.py
 
 # Copy results if needed
 mkdir -p ../results/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
