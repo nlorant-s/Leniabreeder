@@ -33,9 +33,10 @@ cd ../${WORKDIR}
 apptainer run --nv \
     --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
     --bind ${PWD}:/workspace/run \
-    --bind ${HOME}/Leniabreeder:/workspace/leniabreeder \
+    --bind ${PWD}:/workspace/leniabreeder \
     ../leniabreeder.sif \
-    qd=aurora
+    --config-dir /workspace/leniabreeder/configs \
+    $(sed -n "${SLURM_ARRAY_TASK_ID}p" /workspace/run/apptainer/hpc.yaml | cut -d'"' -f2)
 
 # Copy results if needed
 mkdir -p ../results/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
