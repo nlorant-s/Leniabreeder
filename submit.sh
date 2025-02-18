@@ -35,8 +35,8 @@ apptainer run --nv \
     --bind ${PWD}:/workspace/run \
     --bind ${PWD}:/workspace/leniabreeder \
     ../leniabreeder.sif \
-    --config-dir /workspace/leniabreeder/configs \
-    $(sed -n "${SLURM_ARRAY_TASK_ID}p" /workspace/run/apptainer/hpc.yaml | cut -d'"' -f2)
+    python /workspace/leniabreeder/main.py \
+    --config-dir /workspace/leniabreeder/configs
 
 # Copy results if needed
 mkdir -p ../results/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
