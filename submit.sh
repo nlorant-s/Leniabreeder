@@ -33,7 +33,7 @@ cd ../${WORKDIR}
 apptainer run --nv \
     --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
     --bind ${PWD}:/workspace/run \
-    --bind ${PWD}/configs:/workspace/leniabreeder/configs \
+    --bind ${PWD}:/workspace/leniabreeder \
     ../leniabreeder.sif \
     python /workspace/leniabreeder/main_aurora.py
 
