@@ -84,6 +84,13 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
 
+	def calculate_average_mass(repertoire):
+		"""Calculate average mass across valid solutions in repertoire"""
+		valid_solutions = repertoire.fitnesses != -jnp.inf
+		valid_masses = repertoire.observations.stats.mass[valid_solutions]
+		valid_masses = jnp.mean(valid_masses, axis=1)  # Average across timesteps for each solution  
+		return jnp.mean(valid_masses) if valid_masses.size > 0 else 0.0
+
 	def compute_domination_count(objectives, archive_objectives):
 		"""Count how many archive solutions dominate this solution"""
 		# A solution dominates another if it's better in at least one objective
@@ -317,7 +324,7 @@ def main(config: DictConfig) -> None:
 		key,
 	)
 
-	metrics = dict.fromkeys(["generation", "qd_score", "coverage", "max_fitness", "loss", "recon_loss", "kld_loss", "learning_rate", "n_elites", "variance", "time"], jnp.array([]))
+	metrics = dict.fromkeys(["generation", "qd_score", "coverage", "max_fitness", "loss", "recon_loss", "kld_loss", "learning_rate", "n_elites", "variance", "time", "avg_mass"], jnp.array([]))
 	csv_logger = CSVLogger("./log.csv", header=list(metrics.keys()))
 
 	# Main loop
@@ -359,6 +366,8 @@ def main(config: DictConfig) -> None:
 		variance = repertoire_variance(repertoire)
 		current_metrics["variance"] = jnp.repeat(variance, config.qd.log_interval)
 		current_metrics["time"] = jnp.repeat(timelapse, config.qd.log_interval)
+		avg_mass = calculate_average_mass(repertoire)
+		current_metrics["avg_mass"] = jnp.repeat(avg_mass, config.qd.log_interval)
 
 		current_metrics_ae = jax.tree_util.tree_map(lambda metric: jnp.repeat(metric[-1], config.qd.log_interval), current_metrics_ae)
 		current_metrics |= current_metrics_ae
