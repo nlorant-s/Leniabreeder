@@ -18,9 +18,10 @@ module load cudnn9.3-cuda12.4/9.3.0.75
 # Set up environment variables
 export PYTHONPATH="${PYTHONPATH}:${PWD}"
 
-# Create working directory
+# Create working directory and copy configs
 WORKDIR="run_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p ${WORKDIR}
+cp -r configs ${WORKDIR}/
 cd ${WORKDIR}
 
 # Build container with conda base
@@ -33,7 +34,7 @@ cd ../${WORKDIR}
 apptainer run --nv \
     --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
     --bind ${PWD}:/workspace/run \
-    --bind ${PWD}:/workspace/leniabreeder \
+    --bind ${PWD}/configs:/workspace/leniabreeder/configs \
     ../leniabreeder.sif \
     python /workspace/leniabreeder/main_aurora.py
 
