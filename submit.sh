@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:a100:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --array=1
+#SBATCH --array=1-10
 
 # Load required modules
 module purge
