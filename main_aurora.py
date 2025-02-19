@@ -164,8 +164,8 @@ def main(config: DictConfig) -> None:
 
 	def fitness_fn(observation, train_state, key, repertoire=None):
 		# if config.qd.fitness == "unsupervised":
-		fitness = latent_variance(observation, train_state, key)
-		# fitness = pareto_fitness(observation, train_state, key, repertoire)
+		# fitness = latent_variance(observation, train_state, key)
+		fitness = pareto_fitness(observation, train_state, key, repertoire)
 		# else:
 		# 	fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 		# 	assert fitness.size == 1
