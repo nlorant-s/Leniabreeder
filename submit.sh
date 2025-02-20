@@ -33,7 +33,7 @@ cd ../${WORKDIR}
 apptainer run --nv \
     --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
     --bind ${PWD}:/workspace/run \
-    --bind ${HOME}/pareto:/workspace/leniabreeder \
+    --bind ${HOME}/Leniabreeder:/workspace/leniabreeder \
     ../leniabreeder.sif \
     qd=aurora seed=${SLURM_ARRAY_TASK_ID}
 
