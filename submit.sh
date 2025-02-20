@@ -35,7 +35,7 @@ apptainer run --nv \
     --bind ${PWD}:/workspace/run \
     --bind ${HOME}/pareto:/workspace/leniabreeder \
     ../leniabreeder.sif \
-    qd=aurora seed=${SLURM_ARRAY_TASK_ID}
+    qd=aurora seed=$RANDOM
 
 # Copy results if needed
 mkdir -p ../results/${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}
