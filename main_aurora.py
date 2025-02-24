@@ -84,6 +84,11 @@ def main(config: DictConfig) -> None:
 		latent_mean = jnp.mean(latents, axis=-2)
 		return -jnp.mean(jnp.linalg.norm(latents - latent_mean[..., None, :], axis=-1), axis=-1)
 
+	def homeodynamics(observation, train_state, key):
+		latents = vae.apply(train_state.params, observation.phenotype[-config.qd.n_keep:], key, method=vae.encode)
+		diffs = latents[1:] - latents[:-1]
+		return -jnp.std(diffs, axis=0).mean()
+	
 	def calculate_average_mass(repertoire):
 		"""Calculate average mass across valid solutions in repertoire"""
 		valid_solutions = repertoire.fitnesses != -jnp.inf
@@ -164,8 +169,11 @@ def main(config: DictConfig) -> None:
 
 	def fitness_fn(observation, train_state, key, repertoire=None):
 		# if config.qd.fitness == "unsupervised":
-		fitness = latent_variance(observation, train_state, key)
+
+		# fitness = latent_variance(observation, train_state, key)
 		# fitness = pareto_fitness(observation, train_state, key, repertoire)
+		fitness = homeodynamics(observation, train_state, key)
+
 		# else:
 		# 	fitness = get_metric(observation, config.qd.fitness, config.qd.n_keep)
 		# 	assert fitness.size == 1
