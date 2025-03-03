@@ -125,15 +125,42 @@ def main(config: DictConfig) -> None:
 		"""Calculate fitness using Pareto-based comparison against archive"""
 		# Calculate individual objectives
 		if repertoire is None or repertoire.fitnesses.size == 0:
-			return latent_variance(observation, train_state, key)
+			# Calculate all three objectives even without a populated repertoire
+			latent_rep = latent_mean(observation, train_state, key)
+			
+			# Still calculate homeostasis with latent variance
+			homeostasis = latent_variance(observation, train_state, key)
+			
+			# For novelty: compare against the batch mean instead of repertoire
+			novelty = jnp.linalg.norm(latent_rep - latent_rep.mean(axis=0), axis=-1)
+			
+			# For sparsity: use a default high value since any solution is sparse at first
+			# or compare within the batch if multiple solutions
+			descriptors = descriptor_fn(observation, train_state, key)
+			batch_size = descriptors.shape[0]
+			
+			if batch_size > 1:
+				# Calculate pairwise distances within the batch as sparsity measure
+				indices = jnp.arange(batch_size)
+				pairwise_dists = jnp.mean(jnp.linalg.norm(
+					descriptors[:, None, :] - descriptors[None, :, :], 
+					axis=-1
+				), axis=-1)
+				sparsity = pairwise_dists  # Higher distance = more sparse
+			else:
+				# Default high sparsity for single solutions
+				sparsity = jnp.ones_like(homeostasis)
+			
+			# Combine objectives (simple sum for now, can be adjusted)
+			return homeostasis + novelty + sparsity
 		
-		latent_mean = latent_mean(observation, train_state, key)
+		latent_rep = latent_mean(observation, train_state, key)
 
 		objectives = jnp.array([
 			latent_variance(observation, train_state, key),  # homeostasis
 			jnp.linalg.norm(  # novelty
-				latent_mean - 
-				latent_mean.mean(axis=0), 
+				latent_rep - 
+				latent_rep.mean(axis=0), 
 				axis=-1
 			),
 			compute_sparsity(  # sparsity in descriptor space
