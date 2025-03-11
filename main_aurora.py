@@ -122,69 +122,24 @@ def main(config: DictConfig) -> None:
 		return -density
 
 	def pareto_fitness(observation, train_state, key, repertoire):
-		"""Calculate fitness using Pareto-based comparison against archive"""
-		# Calculate individual objectives
+		"""Calculate fitness using single-objective comparison against archive"""
+		# Calculate individual objective (homeostasis only)
 		if repertoire is None or repertoire.fitnesses.size == 0:
-			# Calculate all three objectives even without a populated repertoire
-			latent_rep = latent_mean(observation, train_state, key)
-			
-			# Still calculate homeostasis with latent variance
+			# Calculate homeostasis with latent variance
 			homeostasis = latent_variance(observation, train_state, key)
 			
-			# For novelty: compare against the batch mean instead of repertoire
-			novelty = jnp.linalg.norm(latent_rep - latent_rep.mean(axis=0), axis=-1)
-			
-			# For sparsity: use a default high value since any solution is sparse at first
-			# or compare within the batch if multiple solutions
-			descriptors = descriptor_fn(observation, train_state, key)
-			batch_size = descriptors.shape[0]
-			
-			if batch_size > 1:
-				# Calculate pairwise distances within the batch as sparsity measure
-				indices = jnp.arange(batch_size)
-				pairwise_dists = jnp.mean(jnp.linalg.norm(
-					descriptors[:, None, :] - descriptors[None, :, :], 
-					axis=-1
-				), axis=-1)
-				sparsity = pairwise_dists  # Higher distance = more sparse
-			else:
-				# Default high sparsity for single solutions
-				sparsity = jnp.ones_like(homeostasis)
-			
-			# Combine objectives (simple sum for now, can be adjusted)
-			return homeostasis + novelty + sparsity
+			# For first solutions with no comparison, just return objective value
+			return homeostasis
 		
-		latent_rep = latent_mean(observation, train_state, key)
-
-		objectives = jnp.array([
-			latent_variance(observation, train_state, key),  # homeostasis
-			jnp.linalg.norm(  # novelty
-				latent_rep - 
-				latent_rep.mean(axis=0), 
-				axis=-1
-			),
-			compute_sparsity(  # sparsity in descriptor space
-				descriptor_fn(observation, train_state, key),
-				descriptor_fn(repertoire.observations, train_state, key)
-			)
-		])
+		# Calculate homeostasis for current observation
+		objective = latent_variance(observation, train_state, key)
 		
-		# Get archive objectives
-		archive_objectives = jnp.stack([
-			latent_variance(repertoire.observations, train_state, key),
-			jnp.linalg.norm(
-				latent_mean(repertoire.observations, train_state, key) - 
-				latent_mean(repertoire.observations, train_state, key).mean(axis=0), 
-				axis=-1
-			),
-			compute_sparsity(  # sparsity in descriptor space
-				descriptor_fn(observation, train_state, key),
-				descriptor_fn(repertoire.observations, train_state, key)
-			)
-		])
+		# Get archive objective values (homeostasis only)
+		archive_objective = latent_variance(repertoire.observations, train_state, key)
 
-		# Calculate domination-based fitness
-		domination_count = compute_domination_count(objectives, archive_objectives)
+		# Count how many archive solutions have better objective value
+		# With single objective, dominance is just having a better value
+		domination_count = jnp.sum(archive_objective > objective)
 		
 		# Return negative domination count (fewer dominating solutions = better fitness)
 		return -domination_count
