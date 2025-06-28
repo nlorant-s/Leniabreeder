@@ -1,6 +1,6 @@
-# Leniabreeder
+# Adaptive Exploration in Lenia with Intrinsic Multi-Objective Ranking
 
-Repository for "Toward Artificial Open-Ended Evolution within Lenia using Quality-Diversity" (ALIFE 2024).
+Repository for evolutionary Lenia experiments found [here](https://arxiv.org/abs/2506.02990). Underlying Leniabreeder framework taken from "Toward Artificial Open-Ended Evolution within Lenia using Quality-Diversity" (ALIFE 2024). 
 
 ## Installation
 
