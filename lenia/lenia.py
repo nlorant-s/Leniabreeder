@@ -41,9 +41,22 @@ class ConfigLenia:
 
 class Lenia:
 
-	def __init__(self, config: ConfigLenia):
+	def __init__(self, config: ConfigLenia, random_key=None):
 		self._config = config
-		self.pattern = patterns[self._config.pattern_id]
+		
+		# Handle random pattern selection
+		if self._config.pattern_id == "random" or self._config.pattern_id is None:
+			if random_key is None:
+				# Fallback to a default key if none provided
+				random_key = jax.random.PRNGKey(0)
+			
+			pattern_keys = list(patterns.keys())
+			pattern_index = jax.random.choice(random_key, len(pattern_keys))
+			selected_pattern = pattern_keys[pattern_index]
+			print(f"Randomly selected pattern: {selected_pattern}")
+			self.pattern = patterns[selected_pattern]
+		else:
+			self.pattern = patterns[self._config.pattern_id]
 
 		# Genotype
 		self.n_kernel = len(self.pattern["kernels"])  # k, number of kernels

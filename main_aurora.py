@@ -32,6 +32,7 @@ def main(config: DictConfig) -> None:
 
 	# Lenia
 	logging.info("Initializing Lenia...")
+	key, subkey = jax.random.split(key)
 	config_lenia = ConfigLenia(
 		# Init pattern
 		pattern_id=config.pattern_id,
@@ -45,7 +46,7 @@ def main(config: DictConfig) -> None:
 		n_params_size=config.n_params_size,
 		n_cells_size=config.n_cells_size,
 	)
-	lenia = Lenia(config_lenia)
+	lenia = Lenia(config_lenia, random_key=subkey)
 
 	# Load pattern
 	init_carry, init_genotype, other_asset = lenia.load_pattern(lenia.pattern)
