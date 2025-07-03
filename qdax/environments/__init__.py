@@ -1,13 +1,12 @@
 import functools
 from typing import Any, Callable, List, Optional, Union
 
-from brax.v1.envs import Env, _envs
-from brax.v1.envs.wrappers import (
-    AutoResetWrapper,
-    EpisodeWrapper,
-    EvalWrapper,
-    VectorWrapper,
-)
+from brax.envs import Env
+from brax.envs import wrappers
+AutoResetWrapper = wrappers.AutoResetWrapper
+EpisodeWrapper = wrappers.EpisodeWrapper  
+EvalWrapper = wrappers.EvalWrapper
+VectorWrapper = wrappers.VectorWrapper
 
 from qdax.environments.base_wrappers import QDEnv, StateDescriptorResetWrapper
 from qdax.environments.bd_extractors import (
